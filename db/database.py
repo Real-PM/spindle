@@ -1,4 +1,5 @@
 import sys
+import time
 
 import mysql.connector
 from loguru import logger
@@ -57,6 +58,8 @@ class Database:
         self.password = password
         self.database = database
         self.connection = None
+        self._last_used = 0  # Timestamp of last successful query
+        self._max_idle_seconds = 60  # Reconnect if idle longer than this
 
     def connect(self):
         """
@@ -67,7 +70,12 @@ class Database:
         else:
             try:
                 self.connection = mysql.connector.connect(
-                    host=self.host, user=self.user, password=self.password, database=self.database
+                    host=self.host,
+                    user=self.user,
+                    password=self.password,
+                    database=self.database,
+                    connection_timeout=10,  # Fail fast on connection issues
+                    autocommit=True,  # Don't hold transactions open
                 )
                 logger.info("Connected to MySQL server")
             except mysql.connector.Error as error:
@@ -78,18 +86,26 @@ class Database:
         """Ensure connection is alive, reconnect if stale.
 
         Call this before database operations in long-running loops where the
-        connection may have timed out (e.g., during API calls or hibernation).
-        """
-        if self.connection is None:
-            self.connect()
-            return
+        connection may have timed out (e.g., during API calls or NAT timeout).
 
-        try:
-            self.connection.ping(reconnect=True, attempts=3, delay=1)
-        except mysql.connector.Error as e:
-            logger.warning(f"Connection ping failed: {e}, reconnecting...")
-            self.connection = None
+        Reconnects if the connection has been idle for more than _max_idle_seconds.
+        This avoids NAT/firewall timeouts without reconnecting on every query.
+        """
+        now = time.time()
+        idle_time = now - self._last_used
+
+        # If connection is old or doesn't exist, reconnect
+        if self.connection is None or idle_time > self._max_idle_seconds:
+            if self.connection is not None:
+                try:
+                    self.connection.close()
+                    logger.debug(f"Closed stale connection (idle {idle_time:.0f}s)")
+                except Exception:
+                    pass  # Ignore errors closing dead connection
+                self.connection = None
             self.connect()
+
+        self._last_used = now
 
     def close(self):
         """
@@ -141,8 +157,7 @@ class Database:
         params : tuple, optional
             the parameters to use with the SQL query
         """
-        if not self.connection:
-            self.connect()
+        self.ensure_connection()
         try:
             cursor = self.connection.cursor()
             logger.debug("Executing query on MySQL server")
@@ -172,6 +187,7 @@ class Database:
         list
             the results of the query
         """
+        self.ensure_connection()
         result = []
         try:
             cursor = self.connection.cursor()
