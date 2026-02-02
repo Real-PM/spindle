@@ -9,4 +9,5 @@ config.ini
 .idea
 __pycache__
 .claude
-maint/compare_plex_artists.py
+maint/compare_plex_artists.pydata/
+data

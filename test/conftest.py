@@ -20,7 +20,7 @@ import pytest
 from plexapi.myplex import MyPlexAccount
 
 from config.logging import setup_logging
-from db import DB_DATABASE, DB_PASSWORD, DB_PATH, DB_USER, TEST_DB
+from db import DB_PATH, TEST_DB_PATH
 from db.database import Database
 from plex import (
     PLEX_MUSIC_LIBRARY,
@@ -64,7 +64,7 @@ def setup_test_logging():
 @pytest.fixture(scope="function")
 def db_test():
     """Database connection to sandbox (test database). Fresh connection per test."""
-    database = Database(DB_PATH, DB_USER, DB_PASSWORD, TEST_DB)
+    database = Database(TEST_DB_PATH)
     database.connect()
     yield database
     if database.connection:
@@ -74,7 +74,7 @@ def db_test():
 @pytest.fixture(scope="function")
 def db_prod():
     """Database connection to production database. Use with caution."""
-    database = Database(DB_PATH, DB_USER, DB_PASSWORD, DB_DATABASE)
+    database = Database(DB_PATH)
     database.connect()
     yield database
     if database.connection:

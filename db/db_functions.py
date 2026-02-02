@@ -3,18 +3,17 @@ import datetime
 
 from loguru import logger
 
-from . import DB_PASSWORD, DB_PATH, DB_USER, TEST_DB
+from . import TEST_DB_PATH
 from .database import Database
 
-# database = Database(DB_PATH, DB_USER, DB_PASSWORD, DB_DATABASE)
-database = Database(DB_PATH, DB_USER, DB_PASSWORD, TEST_DB)
+database = Database(TEST_DB_PATH)
 
 
 def insert_tracks(database: Database, csv_file):
     database.connect()
     query = """
     INSERT INTO track_data (title, artist, album, genre, added_date, filepath, location, plex_id)
-    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     """
     with open(csv_file) as f:
         reader = csv.DictReader(f)
@@ -29,7 +28,7 @@ def insert_tracks(database: Database, csv_file):
                     row["filepath"],
                     row["location"],
                     row["plex_id"],
-                )  # TODO : make this dynamic
+                )
                 database.execute_query(query, values)
                 logger.info(f"Inserted track record for {row['plex_id']}")
             except Exception as e:
@@ -50,7 +49,7 @@ def get_id_location(database: Database, cutoff=None):
     """
     database.connect()
     query_wo_cutoff = "SELECT id, plex_id, location FROM track_data"
-    query_w_cutoff = "SELECT id, plex_id, location FROM track_data WHERE added_date > %s"
+    query_w_cutoff = "SELECT id, plex_id, location FROM track_data WHERE added_date > ?"
 
     if cutoff is None:
         results = database.execute_select_query(query_wo_cutoff)
@@ -94,7 +93,7 @@ def populate_artists_table(database: Database):
     """
     artists = database.execute_select_query(query)
     for artist in artists:
-        database.execute_query("INSERT INTO artists (artist) VALUES (%s)", (artist[0],))
+        database.execute_query("INSERT INTO artists (artist) VALUES (?)", (artist[0],))
         logger.info(
             f"Inserted {artist[0]} into artists table; {artists.index(artist) + 1} of {len(artists)}"
         )
@@ -109,13 +108,17 @@ def add_artist_id_column(database: Database):
 
     """
     database.connect()
-    query = """
-    ALTER TABLE track_data
-    ADD COLUMN artist_id INTEGER,
-    ADD FOREIGN KEY (artist_id) REFERENCES artists(id) ON DELETE CASCADE
-    """
+    # SQLite doesn't support ADD COLUMN with FOREIGN KEY in ALTER TABLE
+    # Check if column exists first
+    check_query = "SELECT COUNT(*) FROM pragma_table_info('track_data') WHERE name = 'artist_id'"
+    result = database.execute_select_query(check_query)
+    if result and result[0][0] > 0:
+        logger.info("artist_id column already exists in track_data")
+        return None
+
+    query = "ALTER TABLE track_data ADD COLUMN artist_id INTEGER REFERENCES artists(id)"
     result = database.execute_query(query)
-    logger.debug("Replaced artist column in track_data table")
+    logger.debug("Added artist_id column to track_data table")
     return result
 
 
@@ -131,9 +134,9 @@ def populate_artist_id_column(database: Database):
     SELECT id, artist
     FROM artists
     """
-    artists = database.execute_select_query(query)  # fetchall()
+    artists = database.execute_select_query(query)
     logger.debug("Queried DB for id and artist")
-    update_query = "UPDATE track_data SET artist_id = %s WHERE artist = %s"
+    update_query = "UPDATE track_data SET artist_id = ? WHERE artist = ?"
 
     for artist in artists:
         params = (artist[0], artist[1])
@@ -159,13 +162,11 @@ def add_enrichment_attempted_column(database: Database) -> bool:
     """
     database.connect()
 
-    # Check if column already exists
+    # Check if column already exists using SQLite pragma
     check_query = """
         SELECT COUNT(*)
-        FROM information_schema.COLUMNS
-        WHERE TABLE_SCHEMA = DATABASE()
-          AND TABLE_NAME = 'artists'
-          AND COLUMN_NAME = 'enrichment_attempted_at'
+        FROM pragma_table_info('artists')
+        WHERE name = 'enrichment_attempted_at'
     """
     result = database.execute_select_query(check_query)
 
@@ -176,7 +177,7 @@ def add_enrichment_attempted_column(database: Database) -> bool:
 
     # Add the column
     try:
-        alter_query = "ALTER TABLE artists ADD COLUMN enrichment_attempted_at TIMESTAMP NULL DEFAULT NULL"
+        alter_query = "ALTER TABLE artists ADD COLUMN enrichment_attempted_at TEXT"
         database.execute_query(alter_query)
         logger.info("Added enrichment_attempted_at column to artists table")
         database.close()
@@ -202,13 +203,11 @@ def add_acoustid_column(database: Database) -> bool:
     """
     database.connect()
 
-    # Check if column already exists
+    # Check if column already exists using SQLite pragma
     check_query = """
         SELECT COUNT(*)
-        FROM information_schema.COLUMNS
-        WHERE TABLE_SCHEMA = DATABASE()
-          AND TABLE_NAME = 'track_data'
-          AND COLUMN_NAME = 'acoustid'
+        FROM pragma_table_info('track_data')
+        WHERE name = 'acoustid'
     """
     result = database.execute_select_query(check_query)
 
@@ -219,7 +218,7 @@ def add_acoustid_column(database: Database) -> bool:
 
     # Add the column
     try:
-        alter_query = "ALTER TABLE track_data ADD COLUMN acoustid VARCHAR(255)"
+        alter_query = "ALTER TABLE track_data ADD COLUMN acoustid TEXT"
         database.execute_query(alter_query)
         logger.info("Added acoustid column to track_data table")
         database.close()
@@ -261,7 +260,7 @@ def update_history(database: Database, import_size: int):
     max_date = get_latest_added_date(database)
     today = datetime.datetime.now().strftime("%Y-%m-%d")
     query = """
-    INSERT INTO history (tx_date, records, latest_entry) VALUES (%s, %s, %s)
+    INSERT INTO history (tx_date, records, latest_entry) VALUES (?, ?, ?)
     """
     database.execute_query(query, (today, import_size, max_date))
 
@@ -339,7 +338,7 @@ def get_tracks_by_artist_name(
         return []
 
     database.connect()
-    placeholders = ",".join(["%s"] * len(artist_names))
+    placeholders = ",".join(["?"] * len(artist_names))
     query = f"""
         SELECT td.id, td.filepath, a.artist, td.musicbrainz_id, a.id, a.musicbrainz_id, td.acoustid
         FROM track_data td
@@ -370,7 +369,7 @@ def get_artist_names_found(
         return []
 
     database.connect()
-    placeholders = ",".join(["%s"] * len(artist_names))
+    placeholders = ",".join(["?"] * len(artist_names))
     query = f"""
         SELECT DISTINCT a.artist
         FROM artists a

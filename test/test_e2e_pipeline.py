@@ -22,7 +22,7 @@ from analysis.ffmpeg import (
     validate_path_mapping,
     verify_path_accessible,
 )
-from db import DB_PASSWORD, DB_PATH, DB_USER, TEST_DB
+from db import TEST_DB_PATH
 from db.database import Database
 from db.setup_test_env import truncate_all_tables
 from plex import PLEX_TEST_LIBRARY
@@ -203,7 +203,7 @@ def fresh_sandbox():
     Reset sandbox database before tests in this module.
     Returns the Database object for further use.
     """
-    db = Database(DB_PATH, DB_USER, DB_PASSWORD, TEST_DB)
+    db = Database(TEST_DB_PATH)
     truncate_all_tables(db)
     return db
 
@@ -592,7 +592,7 @@ class TestLastFmArtistEnrichment:
         db = lastfm_enriched_sandbox
         db.connect()
         result = db.execute_select_query("""
-            SELECT a.artist, GROUP_CONCAT(g.genre SEPARATOR ', ') as genres
+            SELECT a.artist, GROUP_CONCAT(g.genre, ', ') as genres
             FROM artists a
             JOIN artist_genres ag ON a.id = ag.artist_id
             JOIN genres g ON ag.genre_id = g.id
@@ -659,7 +659,7 @@ class TestLastFmTrackEnrichment:
 
         db.connect()
         result = db.execute_select_query("""
-            SELECT td.title, a.artist, GROUP_CONCAT(g.genre SEPARATOR ', ') as genres
+            SELECT td.title, a.artist, GROUP_CONCAT(g.genre, ', ') as genres
             FROM track_data td
             JOIN artists a ON td.artist_id = a.id
             JOIN track_genres tg ON td.id = tg.track_id

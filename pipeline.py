@@ -152,16 +152,15 @@ def add_new_artists(database: Database) -> int:
 
     count = 0
     for (artist,) in new_artists:
-        database.execute_query("INSERT INTO artists (artist) VALUES (%s)", (artist,))
+        database.execute_query("INSERT INTO artists (artist) VALUES (?)", (artist,))
         count += 1
         logger.info(f"Added new artist: {artist}")
 
-    # Update artist_id for tracks without it
+    # Update artist_id for tracks without it (SQLite compatible - no UPDATE...JOIN)
     database.execute_query("""
-        UPDATE track_data td
-        JOIN artists a ON td.artist = a.artist
-        SET td.artist_id = a.id
-        WHERE td.artist_id IS NULL
+        UPDATE track_data SET artist_id = (
+            SELECT a.id FROM artists a WHERE a.artist = track_data.artist
+        ) WHERE artist_id IS NULL
     """)
 
     database.close()
@@ -216,7 +215,7 @@ def run_incremental_update(
     else:
         cutoff = dbf.get_last_update_date(database)
         if cutoff:
-            cutoff = cutoff.strftime("%Y-%m-%d")
+            cutoff = cutoff.strftime("%Y-%m-%d") if hasattr(cutoff, 'strftime') else cutoff
 
     stats["since_date"] = cutoff
 

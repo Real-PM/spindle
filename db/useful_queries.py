@@ -38,12 +38,13 @@ JOIN genres g ON g.id = COALESCE(tg.genre_id, ag.genre_id)
 ORDER BY t.id, g.genre
 """
 
+# SQLite version: GROUP_CONCAT without ORDER BY clause (SQLite doesn't support ORDER BY in GROUP_CONCAT)
 TRACKS_WITH_EFFECTIVE_GENRES_GROUPED = """
 SELECT
     t.id AS track_id,
     t.title,
     a.artist AS artist_name,
-    GROUP_CONCAT(DISTINCT g.genre ORDER BY g.genre SEPARATOR ', ') AS genres,
+    GROUP_CONCAT(DISTINCT g.genre, ', ') AS genres,
     CASE
         WHEN EXISTS (SELECT 1 FROM track_genres tg WHERE tg.track_id = t.id) THEN 'track'
         ELSE 'artist'
@@ -61,8 +62,11 @@ ORDER BY t.id
 # VIEW DEFINITIONS
 # =============================================================================
 
+# SQLite doesn't support CREATE OR REPLACE VIEW, so we use DROP IF EXISTS + CREATE
+DROP_VIEW_TRACK_EFFECTIVE_GENRES = "DROP VIEW IF EXISTS v_track_effective_genres"
+
 CREATE_VIEW_TRACK_EFFECTIVE_GENRES = """
-CREATE OR REPLACE VIEW v_track_effective_genres AS
+CREATE VIEW v_track_effective_genres AS
 SELECT
     t.id AS track_id,
     t.title,
@@ -81,14 +85,16 @@ LEFT JOIN artist_genres ag ON t.artist_id = ag.artist_id AND tg.track_id IS NULL
 JOIN genres g ON g.id = COALESCE(tg.genre_id, ag.genre_id)
 """
 
+DROP_VIEW_TRACK_EFFECTIVE_GENRES_GROUPED = "DROP VIEW IF EXISTS v_track_effective_genres_grouped"
+
 CREATE_VIEW_TRACK_EFFECTIVE_GENRES_GROUPED = """
-CREATE OR REPLACE VIEW v_track_effective_genres_grouped AS
+CREATE VIEW v_track_effective_genres_grouped AS
 SELECT
     t.id AS track_id,
     t.title,
     a.artist AS artist_name,
     t.bpm,
-    GROUP_CONCAT(DISTINCT g.genre ORDER BY g.genre SEPARATOR ', ') AS genres,
+    GROUP_CONCAT(DISTINCT g.genre, ', ') AS genres,
     CASE
         WHEN EXISTS (SELECT 1 FROM track_genres tg WHERE tg.track_id = t.id) THEN 'track'
         ELSE 'artist'

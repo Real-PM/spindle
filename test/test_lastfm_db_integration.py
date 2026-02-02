@@ -14,7 +14,7 @@ from unittest.mock import patch
 import pytest
 
 from analysis import lastfm
-from db import DB_PASSWORD, DB_PATH, DB_USER, TEST_DB
+from db import TEST_DB_PATH
 from db import db_update as dbu
 from db.database import Database
 
@@ -77,7 +77,7 @@ def mock_get_artist_info(artist_name):
 @pytest.fixture
 def test_db():
     """Provide a test database connection."""
-    db = Database(DB_PATH, DB_USER, DB_PASSWORD, TEST_DB)
+    db = Database(TEST_DB_PATH)
     return db
 
 
@@ -333,7 +333,7 @@ class TestIntegration:
 
             # Update database
             test_db.execute_query(
-                "UPDATE artists SET musicbrainz_id = %s WHERE id = 99999", (mbid,)
+                "UPDATE artists SET musicbrainz_id = ? WHERE id = 99999", (mbid,)
             )
 
             # Verify

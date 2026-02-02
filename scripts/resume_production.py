@@ -17,7 +17,7 @@ from loguru import logger
 # Setup logging first
 setup_logging("logs/resume_production.log")
 
-from db import DB_PATH, DB_USER, DB_PASSWORD, DB_DATABASE
+from db import DB_PATH
 from db.database import Database
 import db.db_functions as dbf
 import db.db_update as dbu
@@ -63,8 +63,8 @@ def main():
     logger.info("=" * 60)
 
     # Connect to production database (NO table drops!)
-    logger.info(f"Connecting to production database: {DB_DATABASE}")
-    db = Database(DB_PATH, DB_USER, DB_PASSWORD, DB_DATABASE)
+    logger.info(f"Connecting to production database: {DB_PATH}")
+    db = Database(DB_PATH)
 
     # Run migrations (idempotent)
     logger.info("Running migrations...")

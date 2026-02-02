@@ -13,7 +13,7 @@ loguru==0.7.2
 mediafile==0.8.0
 msgpack==1.0.8
 mutagen==1.47.0
-mysql-connector-python==9.0.0
+# mysql-connector-python removed - migrated to SQLite
 numpy==2.0.1
 packaging==24.1
 pandas==2.2.3

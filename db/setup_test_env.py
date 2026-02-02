@@ -1,16 +1,16 @@
 """
-Reset the sandbox (test) database by truncating all tables.
+Reset the sandbox (test) database by deleting all data from tables.
 
 Preserves table schema but removes all data for a fresh test run.
 """
 
 from loguru import logger
 
-from db import DB_PASSWORD, DB_PATH, DB_USER, TEST_DB
+from db import TEST_DB_PATH
 from db.database import Database
 
-# Tables to truncate, in order (respects foreign key constraints)
-TABLES_TO_TRUNCATE = [
+# Tables to clear, in order (respects foreign key constraints)
+TABLES_TO_CLEAR = [
     "track_genres",
     "artist_genres",
     "similar_artists",
@@ -21,41 +21,41 @@ TABLES_TO_TRUNCATE = [
 ]
 
 
-def truncate_all_tables(database: Database) -> int:
+def clear_all_tables(database: Database) -> int:
     """
-    Truncate all tables in the test database.
+    Delete all data from tables in the test database.
 
     Args:
         database: Connected Database instance
 
     Returns:
-        Number of tables truncated
+        Number of tables cleared
     """
     database.connect()
 
-    # Disable foreign key checks for truncation
-    database.execute_query("SET FOREIGN_KEY_CHECKS = 0")
+    # Disable foreign key checks for deletion
+    database.execute_query("PRAGMA foreign_keys = OFF")
 
-    truncated = 0
-    for table in TABLES_TO_TRUNCATE:
+    cleared = 0
+    for table in TABLES_TO_CLEAR:
         try:
-            database.execute_query(f"TRUNCATE TABLE {table}")
-            logger.info(f"Truncated table: {table}")
-            truncated += 1
+            database.execute_query(f"DELETE FROM {table}")
+            logger.info(f"Cleared table: {table}")
+            cleared += 1
         except Exception as e:
-            logger.warning(f"Could not truncate {table}: {e}")
+            logger.warning(f"Could not clear {table}: {e}")
 
     # Re-enable foreign key checks
-    database.execute_query("SET FOREIGN_KEY_CHECKS = 1")
+    database.execute_query("PRAGMA foreign_keys = ON")
 
     database.close()
-    return truncated
+    return cleared
 
 
 if __name__ == "__main__":
-    print(f"Resetting sandbox database: {TEST_DB}")
+    print(f"Resetting sandbox database: {TEST_DB_PATH}")
 
-    db = Database(DB_PATH, DB_USER, DB_PASSWORD, TEST_DB)
-    count = truncate_all_tables(db)
+    db = Database(TEST_DB_PATH)
+    count = clear_all_tables(db)
 
-    print(f"Truncated {count} tables")
+    print(f"Cleared {count} tables")

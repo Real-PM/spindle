@@ -15,11 +15,10 @@ from analysis.ffmpeg import (
     verify_path_accessible,
 )
 
-from . import DB_PASSWORD, DB_PATH, DB_USER, TEST_DB
+from . import TEST_DB_PATH
 from .database import Database
 
-# TODO change database for production
-database = Database(DB_PATH, DB_USER, DB_PASSWORD, TEST_DB)
+database = Database(TEST_DB_PATH)
 
 
 def populate_genres_table_from_track_data(database: Database):
@@ -57,7 +56,7 @@ def insert_genres_if_not_exists(database: Database, genre_list: list):
     new_genres = [genre for genre in genre_list if genre not in existing_genres_set]
 
     for genre in new_genres:
-        database.execute_query("INSERT INTO genres (genre) VALUES (%s)", (genre,))
+        database.execute_query("INSERT INTO genres (genre) VALUES (?)", (genre,))
         logger.info(f"Inserted new genre: {genre}")
 
     database.close()
@@ -79,12 +78,12 @@ def populate_track_genre_table(database: Database):
                 genre_str = genre_str.strip("[]").replace("'", "")
                 genres = [genre.strip() for genre in genre_str.split(",")]
                 for genre in genres:
-                    genre_id_query = "SELECT id FROM genres WHERE genre = %s"
+                    genre_id_query = "SELECT id FROM genres WHERE genre = ?"
                     genre_id_result = database.execute_select_query(genre_id_query, (genre,))
                     if genre_id_result:
                         genre_id = genre_id_result[0][0]
                         database.execute_query(
-                            "INSERT INTO track_genres (track_id, genre_id) VALUES (%s, %s)",
+                            "INSERT INTO track_genres (track_id, genre_id) VALUES (?, ?)",
                             (track_id, genre_id),
                         )
                         logger.info(
@@ -102,7 +101,7 @@ def update_track_genre_table(database: Database, cutoff: str = None):
     logger.debug("Starting to update track genre table.")
     database.connect()
     query_wo_cutoff = "SELECT id, genre FROM track_data"
-    query_w_cutoff = "SELECT id, genre FROM track_data WHERE added_date > %s"
+    query_w_cutoff = "SELECT id, genre FROM track_data WHERE added_date > ?"
 
     if cutoff is None:
         results = database.execute_select_query(query_wo_cutoff)
@@ -122,12 +121,12 @@ def update_track_genre_table(database: Database, cutoff: str = None):
                 genre_str = genre_str.strip("[]").replace("'", "")
                 genres = [genre.strip() for genre in genre_str.split(",")]
                 for genre in genres:
-                    genre_id_query = "SELECT id FROM genres WHERE genre = %s"
+                    genre_id_query = "SELECT id FROM genres WHERE genre = ?"
                     genre_id_result = database.execute_select_query(genre_id_query, (genre,))
                     if genre_id_result:
                         genre_id = genre_id_result[0][0]
                         database.execute_query(
-                            "INSERT INTO track_genres (track_id, genre_id) VALUES (%s, %s)",
+                            "INSERT INTO track_genres (track_id, genre_id) VALUES (?, ?)",
                             (track_id, genre_id),
                         )
                         logger.info(
@@ -170,7 +169,7 @@ def check_mbid_and_insert(database: Database, lastfm_json: json, mbid_list: list
     if mbid not in mbid_list:
         artist = lastfm_json["artist"]["name"]
         database.execute_query(
-            "UPDATE artists SET musicbrainz_id = %s WHERE artist = %s", (mbid, artist)
+            "UPDATE artists SET musicbrainz_id = ? WHERE artist = ?", (mbid, artist)
         )
         logger.info(f"Inserted MBID for {artist}: {mbid}")
 
@@ -180,7 +179,7 @@ def check_tags_and_insert(database: Database, lastfm_json: json, genre_list: lis
     tags = lastfm.get_artist_tags(lastfm_json)
     for tag in tags:
         if tag.lower() not in [g.lower() for g in genre_list]:  # Case-insensitive check
-            database.execute_query("INSERT INTO genres (genre) VALUES (%s)", (tag,))
+            database.execute_query("INSERT INTO genres (genre) VALUES (?)", (tag,))
             logger.info(f"Inserted new genre: {tag}")
             genre_list.append(tag)  # Add to list to prevent duplicates
     database.close()
@@ -210,7 +209,7 @@ def _process_artist_mbid_and_genres(
     if mbid:
         logger.debug(f"MBID for {artist_name}: {mbid}")
         database.execute_query(
-            "UPDATE artists SET musicbrainz_id = %s WHERE id = %s", (mbid, artist_id)
+            "UPDATE artists SET musicbrainz_id = ? WHERE id = ?", (mbid, artist_id)
         )
         result["mbid_updated"] = True
 
@@ -219,14 +218,14 @@ def _process_artist_mbid_and_genres(
     for genre in genres:
         genre = genre.lower()
         try:
-            # Insert genre if not exists using WHERE NOT EXISTS
+            # Insert genre if not exists - SQLite compatible
             database.execute_query(
                 """
-                INSERT INTO genres (genre)
-                SELECT %s
+                INSERT OR IGNORE INTO genres (genre)
+                SELECT ?
                 WHERE NOT EXISTS (
                     SELECT 1 FROM genres
-                    WHERE LOWER(genre) = LOWER(%s)
+                    WHERE LOWER(genre) = LOWER(?)
                 )
             """,
                 (genre, genre),
@@ -234,17 +233,17 @@ def _process_artist_mbid_and_genres(
 
             # Get genre ID
             genre_id = database.execute_select_query(
-                "SELECT id FROM genres WHERE LOWER(genre) = LOWER(%s)", (genre,)
+                "SELECT id FROM genres WHERE LOWER(genre) = LOWER(?)", (genre,)
             )[0][0]
 
             # Insert genre relationship if not exists
             database.execute_query(
                 """
-                INSERT INTO artist_genres (artist_id, genre_id)
-                SELECT %s, %s
+                INSERT OR IGNORE INTO artist_genres (artist_id, genre_id)
+                SELECT ?, ?
                 WHERE NOT EXISTS (
                     SELECT 1 FROM artist_genres
-                    WHERE artist_id = %s AND genre_id = %s
+                    WHERE artist_id = ? AND genre_id = ?
                 )
             """,
                 (artist_id, genre_id, artist_id, genre_id),
@@ -287,11 +286,11 @@ def _process_similar_artists(
             # Insert similar artist if not exists
             database.execute_query(
                 """
-                INSERT INTO artists (artist)
-                SELECT %s
+                INSERT OR IGNORE INTO artists (artist)
+                SELECT ?
                 WHERE NOT EXISTS (
                     SELECT 1 FROM artists
-                    WHERE LOWER(artist) = LOWER(%s)
+                    WHERE LOWER(artist) = LOWER(?)
                 )
             """,
                 (similar_artist, similar_artist),
@@ -299,18 +298,18 @@ def _process_similar_artists(
 
             # Get similar artist ID
             similar_artist_id = database.execute_select_query(
-                "SELECT id FROM artists WHERE LOWER(artist) = LOWER(%s)",
+                "SELECT id FROM artists WHERE LOWER(artist) = LOWER(?)",
                 (similar_artist,),
             )[0][0]
 
             # Insert similar artist relationship if not exists
             database.execute_query(
                 """
-                INSERT INTO similar_artists (artist_id, similar_artist_id)
-                SELECT %s, %s
+                INSERT OR IGNORE INTO similar_artists (artist_id, similar_artist_id)
+                SELECT ?, ?
                 WHERE NOT EXISTS (
                     SELECT 1 FROM similar_artists
-                    WHERE artist_id = %s AND similar_artist_id = %s
+                    WHERE artist_id = ? AND similar_artist_id = ?
                 )
             """,
                 (artist_id, similar_artist_id, artist_id, similar_artist_id),
@@ -361,7 +360,7 @@ def enrich_artists_core(
                 logger.info("No artists to enrich (empty list)")
                 database.close()
                 return stats
-            placeholders = ",".join(["%s"] * len(artist_ids))
+            placeholders = ",".join(["?"] * len(artist_ids))
             query = f"SELECT id, artist FROM artists WHERE id IN ({placeholders})"
             artists = database.execute_select_query(query, tuple(artist_ids))
         else:
@@ -382,7 +381,7 @@ def enrich_artists_core(
 
                 # Mark enrichment attempted regardless of success
                 database.execute_query(
-                    "UPDATE artists SET enrichment_attempted_at = NOW() WHERE id = %s",
+                    "UPDATE artists SET enrichment_attempted_at = datetime('now') WHERE id = ?",
                     (artist_id,),
                 )
 
@@ -461,7 +460,7 @@ def enrich_artists_full(
                 logger.info("No artists to enrich (empty list)")
                 database.close()
                 return stats
-            placeholders = ",".join(["%s"] * len(artist_ids))
+            placeholders = ",".join(["?"] * len(artist_ids))
             query = f"SELECT id, artist FROM artists WHERE id IN ({placeholders})"
             artists = database.execute_select_query(query, tuple(artist_ids))
         else:
@@ -482,7 +481,7 @@ def enrich_artists_full(
 
                 # Mark enrichment attempted regardless of success
                 database.execute_query(
-                    "UPDATE artists SET enrichment_attempted_at = NOW() WHERE id = %s",
+                    "UPDATE artists SET enrichment_attempted_at = datetime('now') WHERE id = ?",
                     (artist_id,),
                 )
 
@@ -587,7 +586,7 @@ def insert_lastfm_track_data(
             track_mbid = lastfm.get_track_mbid(lfm_track_data)
             if track_mbid:
                 database.execute_query(
-                    "UPDATE track_data SET musicbrainz_id = %s WHERE id = %s",
+                    "UPDATE track_data SET musicbrainz_id = ? WHERE id = ?",
                     (track_mbid, track_id),
                 )
                 logger.info(f"Updated MBID for {title}: {track_mbid}")
@@ -597,14 +596,14 @@ def insert_lastfm_track_data(
         for genre in track_genres:
             genre = genre.lower()
             try:
-                # Insert genre if not exists using WHERE NOT EXISTS
+                # Insert genre if not exists - SQLite compatible
                 database.execute_query(
                     """
-                    INSERT INTO genres (genre)
-                    SELECT %s
+                    INSERT OR IGNORE INTO genres (genre)
+                    SELECT ?
                     WHERE NOT EXISTS (
                         SELECT 1 FROM genres
-                        WHERE LOWER(genre) = LOWER(%s)
+                        WHERE LOWER(genre) = LOWER(?)
                     )
                 """,
                     (genre, genre),
@@ -612,17 +611,17 @@ def insert_lastfm_track_data(
 
                 # Get genre ID
                 genre_id = database.execute_select_query(
-                    "SELECT id FROM genres WHERE LOWER(genre) = LOWER(%s)", (genre,)
+                    "SELECT id FROM genres WHERE LOWER(genre) = LOWER(?)", (genre,)
                 )[0][0]
 
                 # Insert genre relationship if not exists
                 database.execute_query(
                     """
-                    INSERT INTO track_genres (track_id, genre_id)
-                    SELECT %s, %s
+                    INSERT OR IGNORE INTO track_genres (track_id, genre_id)
+                    SELECT ?, ?
                     WHERE NOT EXISTS (
                         SELECT 1 FROM track_genres
-                        WHERE track_id = %s AND genre_id = %s
+                        WHERE track_id = ? AND genre_id = ?
                     )
                 """,
                     (track_id, genre_id, track_id, genre_id),
@@ -819,7 +818,7 @@ def process_bpm_acousticbrainz(database: Database) -> dict:
             try:
                 bpm_int = round(bpm_value)
                 database.execute_query(
-                    "UPDATE track_data SET bpm = %s WHERE id = %s", (bpm_int, track_id)
+                    "UPDATE track_data SET bpm = ? WHERE id = ?", (bpm_int, track_id)
                 )
                 stats["mbid_lookup"]["updated"] += 1
                 logger.debug(f"Updated track {track_id} with BPM {bpm_int}")
@@ -871,7 +870,7 @@ def process_bpm_acousticbrainz(database: Database) -> dict:
                     resolved_mbid = resolved_mbids[track_id]
                     # Update both BPM and the resolved MBID
                     database.execute_query(
-                        "UPDATE track_data SET bpm = %s, musicbrainz_id = %s WHERE id = %s",
+                        "UPDATE track_data SET bpm = ?, musicbrainz_id = ? WHERE id = ?",
                         (bpm_int, resolved_mbid, track_id)
                     )
                     stats["acoustid_lookup"]["updated"] += 1
@@ -1027,7 +1026,7 @@ def process_bpm_essentia(
         try:
             bpm_int = round(bpm_value)
             database.execute_query(
-                "UPDATE track_data SET bpm = %s WHERE id = %s", (bpm_int, track_id)
+                "UPDATE track_data SET bpm = ? WHERE id = ?", (bpm_int, track_id)
             )
             stats["updated"] += 1
         except Exception as e:

@@ -20,10 +20,8 @@ def maintain_artists_mbid(database: Database):
         info = lfm.get_artist_info(artist)
         mbid = lfm.get_artist_mbid(info)
         if mbid:
-            update_query = (
-                f"""UPDATE artists SET musicbrainz_id = '{mbid}' WHERE id = {artist_id}"""
-            )
-            database.execute_query(update_query)
+            update_query = "UPDATE artists SET musicbrainz_id = ? WHERE id = ?"
+            database.execute_query(update_query, (mbid, artist_id))
             logger.info(f"Updated {artist} with mbid {mbid}")
         else:
             logger.info(f"Failed to update {artist} with mbid")
@@ -52,34 +50,34 @@ WHERE artist_genres.artist_id IS NULL;
         for genre in genres:
             genre = genre.lower()
             try:
-                # Insert genre if not exists using WHERE NOT EXISTS
+                # Insert genre if not exists - SQLite compatible
                 database.execute_query(
                     """
-                                    INSERT INTO genres (genre)
-                                    SELECT %s
-                                    WHERE NOT EXISTS (
-                                        SELECT 1 FROM genres 
-                                        WHERE LOWER(genre) = LOWER(%s)
-                                    )
-                                """,
+                    INSERT OR IGNORE INTO genres (genre)
+                    SELECT ?
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM genres
+                        WHERE LOWER(genre) = LOWER(?)
+                    )
+                """,
                     (genre, genre),
                 )
 
                 # Get genre ID
                 genre_id = database.execute_select_query(
-                    "SELECT id FROM genres WHERE LOWER(genre) = LOWER(%s)", (genre,)
+                    "SELECT id FROM genres WHERE LOWER(genre) = LOWER(?)", (genre,)
                 )[0][0]
 
                 # Insert genre relationship if not exists
                 database.execute_query(
                     """
-                                    INSERT INTO artist_genres (artist_id, genre_id)
-                                    SELECT %s, %s
-                                    WHERE NOT EXISTS (
-                                        SELECT 1 FROM artist_genres
-                                        WHERE artist_id = %s AND genre_id = %s
-                                    )
-                                """,
+                    INSERT OR IGNORE INTO artist_genres (artist_id, genre_id)
+                    SELECT ?, ?
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM artist_genres
+                        WHERE artist_id = ? AND genre_id = ?
+                    )
+                """,
                     (artist_id, genre_id, artist_id, genre_id),
                 )
 

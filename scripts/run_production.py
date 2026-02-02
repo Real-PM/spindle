@@ -6,7 +6,6 @@ Initializes the production database and runs the full pipeline.
 """
 
 import sys
-import time
 from datetime import datetime
 
 sys.path.insert(0, "/mnt/hdd/PycharmProjects/music_organizer_clean")
@@ -17,7 +16,7 @@ from loguru import logger
 # Setup logging first
 setup_logging("logs/production_run.log")
 
-from db import DB_PATH, DB_USER, DB_PASSWORD, DB_DATABASE
+from db import DB_PATH
 from db.database import Database
 from plex import PLEX_MUSIC_LIBRARY
 from plex.plex_library import plex_connect, get_music_library, get_all_tracks, listify_track_data
@@ -30,8 +29,8 @@ def main():
     logger.info("=" * 60)
 
     # Connect to production database
-    logger.info(f"Connecting to production database: {DB_DATABASE}")
-    db = Database(DB_PATH, DB_USER, DB_PASSWORD, DB_DATABASE)
+    logger.info(f"Connecting to production database: {DB_PATH}")
+    db = Database(DB_PATH)
 
     # Validate environment first
     logger.info("Validating environment...")

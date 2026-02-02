@@ -4,11 +4,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-DB_PATH = os.getenv("MYSQL_HOST", "localhost")
-DB_USER = os.getenv("MYSQL_USER", "root")
-DB_PASSWORD = os.getenv("MYSQL_PASSWORD", "")
-DB_DATABASE = os.getenv("MYSQL_DATABASE", "music_organizer")
-TEST_DB = os.getenv("MYSQL_TEST_DATABASE", "sandbox")
-DB_PORT = os.getenv("MYSQL_PORT", "3306")
+# SQLite database paths
+DB_PATH = os.getenv("SQLITE_DB_PATH", "data/music_organizer.db")
+TEST_DB_PATH = os.getenv("SQLITE_TEST_DB_PATH", "data/sandbox.db")
 
-__all__ = ["DB_PATH", "DB_USER", "DB_PASSWORD", "DB_DATABASE", "TEST_DB", "DB_PORT"]
+__all__ = ["DB_PATH", "TEST_DB_PATH"]

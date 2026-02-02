@@ -22,18 +22,18 @@ def maintain_bpm(database: dbu.Database):
     """
     temp_dir = "temp"
     database.connect()
-    query = """SELECT td.id, td.title, td.filepath 
+    query = """SELECT td.id, td.title, td.filepath
     FROM track_data td
     WHERE td.filepath LIKE '%.m4a' AND td.bpm IS NULL"""
     tracks = database.execute_select_query(query)
-    for id, title, filepath in tracks:
+    for track_id, title, filepath in tracks:
         temp_filepath = os.path.join(temp_dir, f"{title}.wav")
         logger.debug(f"Converting {filepath} to {temp_filepath}")
         sub.run(["ffmpeg", "-i", filepath, temp_filepath])
         bpm = b.get_bpm(temp_filepath)
         if bpm:
-            update_query = f"""UPDATE track_data SET bpm = {bpm} WHERE id = {id}"""
-            database.execute_query(update_query)
+            update_query = "UPDATE track_data SET bpm = ? WHERE id = ?"
+            database.execute_query(update_query, (bpm, track_id))
             logger.info(f"Updated {title} with bpm {bpm}")
         else:
             logger.info(f"Failed to update {title} with bpm")

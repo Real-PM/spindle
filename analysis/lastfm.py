@@ -5,7 +5,7 @@ import requests
 from dotenv import load_dotenv
 from loguru import logger
 
-from db import DB_PASSWORD, DB_PATH, DB_USER, TEST_DB
+from db import TEST_DB_PATH
 from db.database import Database
 
 load_dotenv()
@@ -15,7 +15,7 @@ LASTFM_SHARED_SECRET = os.getenv("LASTFM_SHARED_SECRET", "")
 LASTFM_USERNAME = os.getenv("LASTFM_USERNAME", "")
 LASTFM_APP_NAME = os.getenv("LASTFM_APP_NAME", "")
 
-database = Database(DB_PATH, DB_USER, DB_PASSWORD, TEST_DB)  # Change to production db
+database = Database(TEST_DB_PATH)
 
 
 def get_artist_info(artist_name):
@@ -105,11 +105,6 @@ def get_similar_artists(result):
     except Exception as e:
         logger.error(f"Failed to retrieve similar artists for {result['artist']['name']}: {e}")
         return []
-    # try:
-    #     similar_artists = result.get('similar', {}).get('artist', [])
-    #     return [artist.get('name') for artist in similar_artists]
-    # except (KeyError, AttributeError):
-    #     return []
 
 
 def get_current_mbids_from_db(database: Database):
