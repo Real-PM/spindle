@@ -15,6 +15,9 @@ LASTFM_SHARED_SECRET = os.getenv("LASTFM_SHARED_SECRET", "")
 LASTFM_USERNAME = os.getenv("LASTFM_USERNAME", "")
 LASTFM_APP_NAME = os.getenv("LASTFM_APP_NAME", "")
 
+# Request timeout in seconds (connect, read)
+REQUEST_TIMEOUT = 30
+
 database = Database(TEST_DB_PATH)
 
 
@@ -29,7 +32,14 @@ def get_artist_info(artist_name):
     dict: A JSON object containing information about the artist if the request is successful, otherwise None.
     """
     url = f"http://ws.audioscrobbler.com/2.0/?method=artist.getinfo&autocorrect=1&artist={artist_name}&api_key={LASTFM_API_KEY}&format=json"
-    response = requests.get(url)
+    try:
+        response = requests.get(url, timeout=REQUEST_TIMEOUT)
+    except requests.exceptions.Timeout:
+        logger.warning(f"Request timeout for artist {artist_name}")
+        return None
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Request failed for artist {artist_name}: {e}")
+        return None
     if response.status_code == 200:
         logger.debug(f"last_fm Response: {response.json()}")
         logger.info(f"Retrieved artist info for {artist_name}")
@@ -183,7 +193,14 @@ def get_last_fm_track_data(
         logger.error("get_last_fm_track_data requires either mbid or artist+track")
         return None
 
-    response = requests.get(url)
+    try:
+        response = requests.get(url, timeout=REQUEST_TIMEOUT)
+    except requests.exceptions.Timeout:
+        logger.warning(f"Request timeout for {lookup_desc}")
+        return None
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Request failed for {lookup_desc}: {e}")
+        return None
     if response.status_code == 200:
         result = response.json()
         # Check for API error response (e.g., track not found)

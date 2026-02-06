@@ -188,6 +188,98 @@ def add_enrichment_attempted_column(database: Database) -> bool:
         return False
 
 
+def add_lastfm_attempted_column(database: Database) -> bool:
+    """Add lastfm_attempted_at column to track_data table.
+
+    This column tracks when a track was last queried for Last.fm enrichment,
+    preventing re-querying tracks that Last.fm doesn't have data for.
+
+    Args:
+        database: Database connection
+
+    Returns:
+        True if column was added, False if it already exists or error occurred
+    """
+    database.connect()
+
+    # Check if column already exists using SQLite pragma
+    check_query = """
+        SELECT COUNT(*)
+        FROM pragma_table_info('track_data')
+        WHERE name = 'lastfm_attempted_at'
+    """
+    result = database.execute_select_query(check_query)
+
+    if result and result[0][0] > 0:
+        logger.info("lastfm_attempted_at column already exists in track_data")
+        database.close()
+        return False
+
+    # Add the column
+    try:
+        alter_query = "ALTER TABLE track_data ADD COLUMN lastfm_attempted_at TEXT"
+        database.execute_query(alter_query)
+        logger.info("Added lastfm_attempted_at column to track_data table")
+        database.close()
+        return True
+    except Exception as e:
+        logger.error(f"Failed to add lastfm_attempted_at column: {e}")
+        database.close()
+        return False
+
+
+def add_spotify_columns(database: Database) -> bool:
+    """Add Spotify-related columns to track_data table.
+
+    Adds columns for Spotify ID and audio features (energy, danceability, etc.)
+    These provide richer data for playlist generation.
+
+    Args:
+        database: Database connection
+
+    Returns:
+        True if any columns were added, False if all already exist
+    """
+    database.connect()
+
+    columns_to_add = [
+        ("spotify_id", "TEXT"),
+        ("spotify_bpm", "INTEGER"),  # Spotify's tempo, separate from our bpm
+        ("energy", "REAL"),
+        ("danceability", "REAL"),
+        ("valence", "REAL"),
+        ("acousticness", "REAL"),
+        ("instrumentalness", "REAL"),
+        ("spotify_key", "INTEGER"),
+        ("spotify_mode", "INTEGER"),
+        ("time_signature", "INTEGER"),
+        ("spotify_attempted_at", "TEXT"),
+    ]
+
+    added_any = False
+    for col_name, col_type in columns_to_add:
+        check_query = f"""
+            SELECT COUNT(*)
+            FROM pragma_table_info('track_data')
+            WHERE name = '{col_name}'
+        """
+        result = database.execute_select_query(check_query)
+
+        if result and result[0][0] > 0:
+            continue  # Column exists
+
+        try:
+            alter_query = f"ALTER TABLE track_data ADD COLUMN {col_name} {col_type}"
+            database.execute_query(alter_query)
+            logger.info(f"Added {col_name} column to track_data table")
+            added_any = True
+        except Exception as e:
+            logger.error(f"Failed to add {col_name} column: {e}")
+
+    database.close()
+    return added_any
+
+
 def add_acoustid_column(database: Database) -> bool:
     """Add acoustid column to track_data table.
 

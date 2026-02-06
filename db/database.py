@@ -138,6 +138,30 @@ class Database:
         except sqlite3.Error as error:
             logger.error(f"Error executing query: {error}")
 
+    def execute_many(self, query: str, params_list: list[tuple]) -> int:
+        """
+        Executes a SQL query multiple times with different parameters (batch insert).
+
+        Args:
+            query: The SQL query to execute (with placeholders)
+            params_list: List of parameter tuples
+
+        Returns:
+            Number of rows affected
+        """
+        self.ensure_connection()
+        try:
+            cursor = self.connection.cursor()
+            cursor.executemany(query, params_list)
+            self.connection.commit()
+            rowcount = cursor.rowcount
+            cursor.close()
+            return rowcount
+        except sqlite3.Error as error:
+            logger.error(f"Error executing batch query: {error}")
+            self.connection.rollback()
+            raise
+
     def execute_select_query(self, query, params=None):
         """
         Executes a SELECT SQL query on the database and returns the results.
@@ -214,9 +238,9 @@ class Database:
         track_data_ddl = """
         CREATE TABLE IF NOT EXISTS track_data(
         id INTEGER PRIMARY KEY AUTOINCREMENT
-        , title TEXT NOT NULL
-        , artist TEXT NOT NULL
-        , album TEXT NOT NULL
+        , title TEXT
+        , artist TEXT
+        , album TEXT
         , added_date TEXT
         , filepath TEXT
         , location TEXT

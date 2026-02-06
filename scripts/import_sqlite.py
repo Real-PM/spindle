@@ -55,8 +55,11 @@ TABLE_COLUMNS = {
 }
 
 
+BATCH_SIZE = 1000
+
+
 def import_table(database: Database, table_name: str, json_path: str) -> int:
-    """Import a single table from JSON.
+    """Import a single table from JSON using batch inserts.
 
     Args:
         database: Database connection
@@ -87,24 +90,47 @@ def import_table(database: Database, table_name: str, json_path: str) -> int:
     column_names = ", ".join(columns)
     insert_sql = f"INSERT INTO {table_name} ({column_names}) VALUES ({placeholders})"
 
-    imported = 0
-    for row in data:
+    # Convert rows to tuples
+    def row_to_tuple(row: dict) -> tuple:
         values = []
         for col in columns:
             value = row.get(col)
-            # Handle None values and empty strings
             if value == "":
                 value = None
             values.append(value)
+        return tuple(values)
+
+    imported = 0
+    errors = 0
+    total_rows = len(data)
+
+    # Process in batches
+    for batch_start in range(0, total_rows, BATCH_SIZE):
+        batch_end = min(batch_start + BATCH_SIZE, total_rows)
+        batch = data[batch_start:batch_end]
+        batch_tuples = [row_to_tuple(row) for row in batch]
 
         try:
-            database.execute_query(insert_sql, tuple(values))
-            imported += 1
+            database.execute_many(insert_sql, batch_tuples)
+            imported += len(batch_tuples)
         except Exception as e:
-            print(f"    Error inserting row in {table_name}: {e}")
-            print(f"    Row data: {row}")
+            # Batch failed - fall back to individual inserts for this batch
+            print(f"    Batch {batch_start}-{batch_end} failed, falling back to individual inserts: {e}")
+            for i, row in enumerate(batch):
+                try:
+                    database.execute_query(insert_sql, row_to_tuple(row))
+                    imported += 1
+                except Exception as row_error:
+                    errors += 1
+                    print(f"    Error inserting row {batch_start + i} in {table_name}: {row_error}")
 
-    print(f"  Imported {imported} rows into {table_name}")
+        # Progress update every batch
+        print(f"  {table_name}: {imported}/{total_rows} rows ({100 * imported // total_rows}%)")
+
+    if errors:
+        print(f"  Imported {imported} rows into {table_name} ({errors} errors)")
+    else:
+        print(f"  Imported {imported} rows into {table_name}")
     return imported
 
 

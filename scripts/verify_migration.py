@@ -12,6 +12,7 @@ Usage:
 import argparse
 import json
 import os
+import random
 import sys
 
 # Add parent directory to path for imports
@@ -50,72 +51,81 @@ def count_sqlite_rows(database: Database, table_name: str) -> int:
         return -1
 
 
-def spot_check_artists(database: Database, json_path: str) -> bool:
-    """Spot check a few artists to verify data integrity."""
+SAMPLE_PERCENT = 5  # Check 5% of records
+
+# Columns to verify for each table (subset of important columns)
+TABLE_VERIFY_COLUMNS = {
+    "artists": ["id", "artist", "musicbrainz_id", "last_fm_id"],
+    "genres": ["id", "genre"],
+    "history": ["id", "tx_date", "records"],
+    "track_data": ["id", "title", "artist", "album", "bpm", "filepath", "musicbrainz_id"],
+    "track_genres": ["id", "track_id", "genre_id"],
+    "artist_genres": ["id", "artist_id", "genre_id"],
+    "similar_artists": ["id", "artist_id", "similar_artist_id"],
+}
+
+
+def normalize_value(value):
+    """Normalize values for comparison (handle empty strings vs None)."""
+    if value == "" or value is None:
+        return None
+    return value
+
+
+def spot_check_table(
+    database: Database, table_name: str, json_path: str, sample_percent: int = SAMPLE_PERCENT
+) -> tuple[bool, int, int]:
+    """Spot check a percentage of records for a table.
+
+    Args:
+        database: Database connection
+        table_name: Name of table to check
+        json_path: Path to JSON file
+        sample_percent: Percentage of records to sample (default 5%)
+
+    Returns:
+        Tuple of (all_match, checked_count, mismatch_count)
+    """
     if not os.path.exists(json_path):
-        return True
+        return True, 0, 0
 
     with open(json_path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
     if not data:
-        return True
+        return True, 0, 0
 
-    # Check first, middle, and last artist
-    samples = [data[0]]
-    if len(data) > 1:
-        samples.append(data[len(data) // 2])
-    if len(data) > 2:
-        samples.append(data[-1])
+    columns = TABLE_VERIFY_COLUMNS.get(table_name, ["id"])
 
-    all_match = True
-    for artist in samples:
-        result = database.execute_select_query(
-            "SELECT artist, musicbrainz_id FROM artists WHERE id = ?",
-            (artist["id"],)
-        )
+    # Sample records (at least 1, at most all)
+    sample_size = max(1, len(data) * sample_percent // 100)
+    samples = random.sample(data, min(sample_size, len(data)))
+
+    # Build SELECT query
+    column_names = ", ".join(columns)
+    select_sql = f"SELECT {column_names} FROM {table_name} WHERE id = ?"
+
+    mismatches = 0
+    for row in samples:
+        result = database.execute_select_query(select_sql, (row["id"],))
+
         if not result:
-            print(f"    Artist ID {artist['id']} not found in SQLite")
-            all_match = False
-        elif result[0][0] != artist["artist"]:
-            print(f"    Artist mismatch: JSON={artist['artist']}, SQLite={result[0][0]}")
-            all_match = False
+            print(f"    {table_name} ID {row['id']} not found in SQLite")
+            mismatches += 1
+            continue
 
-    return all_match
+        # Compare each column
+        sqlite_row = result[0]
+        for i, col in enumerate(columns):
+            json_val = normalize_value(row.get(col))
+            sqlite_val = normalize_value(sqlite_row[i])
 
+            if json_val != sqlite_val:
+                print(f"    {table_name}.{col} mismatch (id={row['id']}): JSON={json_val!r}, SQLite={sqlite_val!r}")
+                mismatches += 1
+                break  # Only report first mismatch per row
 
-def spot_check_tracks(database: Database, json_path: str) -> bool:
-    """Spot check a few tracks to verify data integrity."""
-    if not os.path.exists(json_path):
-        return True
-
-    with open(json_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    if not data:
-        return True
-
-    # Check first, middle, and last track
-    samples = [data[0]]
-    if len(data) > 1:
-        samples.append(data[len(data) // 2])
-    if len(data) > 2:
-        samples.append(data[-1])
-
-    all_match = True
-    for track in samples:
-        result = database.execute_select_query(
-            "SELECT title, artist, bpm FROM track_data WHERE id = ?",
-            (track["id"],)
-        )
-        if not result:
-            print(f"    Track ID {track['id']} not found in SQLite")
-            all_match = False
-        elif result[0][0] != track["title"]:
-            print(f"    Track title mismatch: JSON={track['title']}, SQLite={result[0][0]}")
-            all_match = False
-
-    return all_match
+    return mismatches == 0, len(samples), mismatches
 
 
 def main():
@@ -182,20 +192,34 @@ def main():
     print(f"{'TOTAL':<20} {total_json:>10} {total_sqlite:>10} {total_match:>8}")
     print()
 
-    # Spot checks
-    print("Spot checks:")
-    print("-" * 50)
+    # Spot checks (5% of each table)
+    print(f"Spot checks ({SAMPLE_PERCENT}% random sample per table):")
+    print("-" * 60)
+    print(f"{'Table':<20} {'Checked':>10} {'Errors':>10} {'Result':>10}")
+    print("-" * 60)
 
-    artists_ok = spot_check_artists(database, os.path.join(args.input_dir, "artists.json"))
-    print(f"  Artists: {'✓ OK' if artists_ok else '✗ MISMATCH'}")
+    spot_checks_ok = True
+    total_checked = 0
+    total_errors = 0
 
-    tracks_ok = spot_check_tracks(database, os.path.join(args.input_dir, "track_data.json"))
-    print(f"  Tracks: {'✓ OK' if tracks_ok else '✗ MISMATCH'}")
+    for table in TABLES:
+        json_path = os.path.join(args.input_dir, f"{table}.json")
+        ok, checked, errors = spot_check_table(database, table, json_path)
+        total_checked += checked
+        total_errors += errors
+        if not ok:
+            spot_checks_ok = False
+        result = "✓ OK" if ok else "✗ FAIL"
+        print(f"{table:<20} {checked:>10} {errors:>10} {result:>10}")
+
+    print("-" * 60)
+    total_result = "✓ OK" if spot_checks_ok else "✗ FAIL"
+    print(f"{'TOTAL':<20} {total_checked:>10} {total_errors:>10} {total_result:>10}")
 
     database.close()
 
     print()
-    if all_match and artists_ok and tracks_ok:
+    if all_match and spot_checks_ok:
         print("✓ Migration verified successfully!")
         print()
         print("You can now:")

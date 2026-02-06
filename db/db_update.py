@@ -642,7 +642,6 @@ def process_lastfm_track_data(
     database: Database,
     rate_limit_delay: float = 0.25,
     limit: int | None = None,
-    skip_with_genres: bool = True,
 ) -> dict:
     """
     Fetch track-level data from Last.fm API for all tracks.
@@ -653,12 +652,15 @@ def process_lastfm_track_data(
     Uses existing MBID (from ffprobe/Phase 4) for precise lookup when available,
     falls back to artist+track lookup otherwise.
 
+    Tracks are marked with lastfm_attempted_at timestamp after each query attempt,
+    regardless of whether data was found. This prevents re-querying tracks that
+    Last.fm doesn't have data for.
+
     Args:
         database: Database connection object
         rate_limit_delay: Seconds between API calls. Default 0.25 (4 req/s).
             Last.fm allows ~5 req/s averaged over 5 minutes.
         limit: Optional limit on number of tracks to process (for testing)
-        skip_with_genres: If True, skip tracks that already have genres in track_genres
 
     Returns:
         dict with stats: {'total': int, 'processed': int, 'updated': int, 'skipped': int, 'failed': int}
@@ -676,21 +678,13 @@ def process_lastfm_track_data(
 
     database.connect()
 
-    # Build query - always include MBID for precise lookup when available
-    if skip_with_genres:
-        # Skip tracks that already have genre associations
-        query = """
-            SELECT td.id, a.artist, td.title, td.musicbrainz_id
-            FROM track_data td
-            INNER JOIN artists a ON td.artist_id = a.id
-            WHERE td.id NOT IN (SELECT DISTINCT track_id FROM track_genres)
-        """
-    else:
-        query = """
-            SELECT td.id, a.artist, td.title, td.musicbrainz_id
-            FROM track_data td
-            INNER JOIN artists a ON td.artist_id = a.id
-        """
+    # Query tracks that haven't been attempted yet
+    query = """
+        SELECT td.id, a.artist, td.title, td.musicbrainz_id
+        FROM track_data td
+        INNER JOIN artists a ON td.artist_id = a.id
+        WHERE td.lastfm_attempted_at IS NULL
+    """
 
     if limit:
         query += f" LIMIT {limit}"
@@ -728,6 +722,12 @@ def process_lastfm_track_data(
 
         # Process track (pass full tuple including MBID)
         success = insert_lastfm_track_data(database, track_data)
+
+        # Mark as attempted regardless of success (prevents re-querying)
+        database.execute_query(
+            "UPDATE track_data SET lastfm_attempted_at = datetime('now') WHERE id = ?",
+            (track_id,),
+        )
 
         if success:
             stats["updated"] += 1
@@ -1011,8 +1011,8 @@ def process_bpm_essentia(
         filename = os.path.basename(local_path) if local_path else "unknown"
         logger.debug(f"  Analyzing: {filename}")
 
-        # Analyze BPM
-        bpm_value = bpm_analysis.get_bpm_essentia(local_path)
+        # Analyze BPM (in subprocess to isolate potential SEGV crashes)
+        bpm_value = bpm_analysis.get_bpm_essentia_safe(local_path)
 
         if bpm_value is None:
             logger.debug("  Failed: no BPM detected")

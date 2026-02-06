@@ -1,4 +1,104 @@
-# Session Continuity - 2026-01-29
+# Session Continuity - 2026-02-04
+
+## What Was Accomplished (Session 10)
+
+### Pipeline Progress
+- Phase 3 (Last.fm track enrichment): **Complete** - all 36,874 tracks processed
+- Phase 4 (AcousticBrainz BPM): **Complete** - 13,239 hits out of 30,203 tracks with MBIDs (43.8% hit rate)
+- Phase 5 (Essentia BPM): **Crashed at 53.8%** (12,720/23,635 tracks)
+
+### Essentia Crash on Spoken Word Content
+Pipeline crashed with SEGV while analyzing `Pimsleur_-_Spanish_I_-_Lesson_19.mp3` (track_id=21234). Essentia's RhythmExtractor2013 doesn't handle speech-only audio gracefully.
+
+**Fix:** Removed 109 spoken word tracks from database:
+- 104 Pimsleur language lessons (filepath match)
+- 5 tracks with "Spoken" genre
+- 5 tracks with "Comedy" genre (stand-up, not music)
+
+### Resume Point
+Restart `scripts/resume_production.py` - will resume Phase 5 at track ~12,720 of ~23,526 (adjusted after deletions).
+
+### Commands to Remember
+```bash
+# Re-enable system sleep after pipeline completes
+sudo systemctl unmask sleep.target suspend.target hibernate.target
+```
+
+---
+
+## What Was Accomplished (Session 9)
+
+### SQLite Migration Completed
+
+Successfully migrated from MySQL to SQLite for improved portability and eliminated connection issues.
+
+**Changes:**
+- `db/database.py` - Refactored to use SQLite exclusively
+- `db/__init__.py` - Now exports `SQLITE_DB_PATH` and `SQLITE_TEST_DB_PATH`
+- All SQL updated to use `?` placeholders instead of `%s`
+- Added `execute_many()` for batch inserts (1000x faster imports)
+- Migration scripts: `scripts/export_mysql.py`, `scripts/import_sqlite.py`, `scripts/verify_migration.py`
+
+### Last.fm Track Enrichment Tracking
+
+Added `lastfm_attempted_at` column to track_data to prevent re-querying tracks that Last.fm doesn't have data for.
+
+**Changes:**
+- `db/db_functions.py` - Added `add_lastfm_attempted_column()` migration
+- `db/db_update.py` - `process_lastfm_track_data()` now sets timestamp after each attempt
+- Query filters by `lastfm_attempted_at IS NULL` instead of checking track_genres
+
+### API Request Timeouts
+
+Added 30-second timeout to all Last.fm API requests to prevent hangs during network issues.
+
+**Changes:**
+- `analysis/lastfm.py` - Added `REQUEST_TIMEOUT = 30` and timeout parameter to all `requests.get()` calls
+
+### Incremental Update Script
+
+Created `scripts/run_incremental.py` for adding new tracks to the library without re-processing existing data.
+
+### Spotify Integration (NEW)
+
+Added Spotify API integration for fetching audio features (BPM, energy, danceability, etc.)
+
+**New Files:**
+- `analysis/spotify.py` - Spotify API client with:
+  - OAuth client credentials flow
+  - Track search (by artist+title, ISRC, or MBID→MusicBrainz→Spotify link)
+  - Audio features fetching (single and batch)
+  - Rate limit handling with automatic retry
+- `scripts/fetch_spotify_data.py` - Backfill script for existing library
+
+**New Columns in track_data:**
+- `spotify_id` - Spotify track ID
+- `spotify_bpm` - BPM from Spotify (separate from our bpm column)
+- `energy`, `danceability`, `valence`, `acousticness`, `instrumentalness` - Audio features (0.0-1.0)
+- `spotify_key`, `spotify_mode`, `time_signature` - Musical key info
+- `spotify_attempted_at` - Tracking column
+
+**Migration:**
+- `db/db_functions.py` - Added `add_spotify_columns()` migration
+
+**Configuration Required:**
+Add to `.env`:
+```
+SPOTIFY_CLIENT_ID=your_client_id
+SPOTIFY_CLIENT_SECRET=your_client_secret
+```
+Get credentials at: https://developer.spotify.com/dashboard
+
+**Usage:**
+```bash
+# Backfill existing library
+python scripts/fetch_spotify_data.py
+
+# With limit for testing
+python scripts/fetch_spotify_data.py --limit 100
+```
+
+---
 
 ## Planned Features
 
@@ -451,6 +551,10 @@ WHERE genres LIKE '%rock%' AND bpm BETWEEN 120 AND 140
 | `get_stub_artists_without_mbid()` | `db/db_functions.py` | Query: stub artists needing enrichment |
 | `process_bpm_acousticbrainz()` | `db/db_update.py` | Phase 7.1: API BPM lookup |
 | `process_bpm_essentia()` | `db/db_update.py` | Phase 7.2: Local BPM analysis |
+| `lookup_track_and_features()` | `analysis/spotify.py` | Find track on Spotify, get audio features |
+| `get_audio_features_batch()` | `analysis/spotify.py` | Batch fetch audio features (up to 100) |
+| `add_spotify_columns()` | `db/db_functions.py` | Migration: add Spotify columns to track_data |
+| `add_lastfm_attempted_column()` | `db/db_functions.py` | Migration: add lastfm_attempted_at to track_data |
 
 ## Pending Commit
 

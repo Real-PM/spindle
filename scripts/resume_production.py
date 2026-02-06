@@ -70,6 +70,7 @@ def main():
     logger.info("Running migrations...")
     dbf.add_acoustid_column(db)
     dbf.add_enrichment_attempted_column(db)
+    dbf.add_lastfm_attempted_column(db)
 
     # Check current status
     logger.info("Checking current database status...")
@@ -113,7 +114,7 @@ def main():
     logger.info("PHASE 3: Last.fm track enrichment")
     logger.info("=" * 60)
 
-    track_stats = dbu.process_lastfm_track_data(db, rate_limit_delay=0.25, skip_with_genres=True)
+    track_stats = dbu.process_lastfm_track_data(db, rate_limit_delay=0.25)
     logger.info(f"Track enrichment: {track_stats}")
 
     # Phase 4: BPM enrichment (AcousticBrainz)
