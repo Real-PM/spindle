@@ -1,0 +1,399 @@
+"""
+Playlist query functions.
+
+Foundation functions for building smart playlists. Each function returns
+a list of plex_ids that can be passed directly to plex.playlists.create_playlist().
+
+Functions are designed to be composed via set operations:
+    rock_ids = set(get_tracks_by_genre(db, "rock"))
+    uptempo_ids = set(get_tracks_by_bpm_range(db, 120, 150))
+    playlist = list(rock_ids & uptempo_ids)
+
+The build_playlist_query() function provides a UI-friendly interface that
+composes the smaller functions based on provided parameters.
+"""
+
+import random
+
+from db.database import Database
+
+
+def get_tracks_by_bpm_range(
+    db: Database,
+    min_bpm: int,
+    max_bpm: int,
+) -> list[int]:
+    """
+    Get tracks within a BPM range.
+
+    Args:
+        db: Database connection
+        min_bpm: Minimum BPM (inclusive)
+        max_bpm: Maximum BPM (inclusive)
+
+    Returns:
+        List of plex_ids for matching tracks
+    """
+    query = """
+        SELECT plex_id FROM track_data
+        WHERE bpm BETWEEN ? AND ?
+        AND plex_id IS NOT NULL
+    """
+    db.connect()
+    rows = db.execute_select_query(query, (min_bpm, max_bpm))
+    db.close()
+    return [row[0] for row in rows]
+
+
+def get_tracks_by_genre(db: Database, genre: str) -> list[int]:
+    """
+    Get tracks matching a genre (case-insensitive, partial match).
+
+    Uses "effective genres" - checks track's direct genres first,
+    falls back to artist genres if track has none.
+
+    Args:
+        db: Database connection
+        genre: Genre to match (e.g., "rock", "electronic")
+
+    Returns:
+        List of plex_ids for matching tracks
+    """
+    query = """
+        SELECT DISTINCT td.plex_id
+        FROM track_data td
+        LEFT JOIN track_genres tg ON td.id = tg.track_id
+        LEFT JOIN genres g1 ON tg.genre_id = g1.id
+        LEFT JOIN artist_genres ag ON td.artist_id = ag.artist_id
+        LEFT JOIN genres g2 ON ag.genre_id = g2.id
+        WHERE td.plex_id IS NOT NULL
+        AND (
+            LOWER(g1.genre) LIKE LOWER(?)
+            OR (g1.genre IS NULL AND LOWER(g2.genre) LIKE LOWER(?))
+        )
+    """
+    pattern = f"%{genre}%"
+    db.connect()
+    rows = db.execute_select_query(query, (pattern, pattern))
+    db.close()
+    return [row[0] for row in rows]
+
+
+def get_tracks_by_genres(db: Database, genres: list[str]) -> list[int]:
+    """
+    Get tracks matching any of the specified genres.
+
+    Args:
+        db: Database connection
+        genres: List of genres to match (OR logic)
+
+    Returns:
+        List of plex_ids for matching tracks
+    """
+    if not genres:
+        return []
+
+    results = set()
+    for genre in genres:
+        results.update(get_tracks_by_genre(db, genre))
+    return list(results)
+
+
+def get_tracks_by_artist(db: Database, artist_name: str) -> list[int]:
+    """
+    Get tracks by a specific artist (case-insensitive, exact match).
+
+    Args:
+        db: Database connection
+        artist_name: Artist name to match
+
+    Returns:
+        List of plex_ids for matching tracks
+    """
+    query = """
+        SELECT plex_id FROM track_data
+        WHERE LOWER(artist) = LOWER(?)
+        AND plex_id IS NOT NULL
+    """
+    db.connect()
+    rows = db.execute_select_query(query, (artist_name,))
+    db.close()
+    return [row[0] for row in rows]
+
+
+def get_tracks_by_artists(db: Database, artist_names: list[str]) -> list[int]:
+    """
+    Get tracks by any of the specified artists.
+
+    Args:
+        db: Database connection
+        artist_names: List of artist names (OR logic)
+
+    Returns:
+        List of plex_ids for matching tracks
+    """
+    if not artist_names:
+        return []
+
+    placeholders = ",".join("?" * len(artist_names))
+    query = f"""
+        SELECT plex_id FROM track_data
+        WHERE LOWER(artist) IN ({placeholders})
+        AND plex_id IS NOT NULL
+    """
+    db.connect()
+    rows = db.execute_select_query(query, tuple(name.lower() for name in artist_names))
+    db.close()
+    return [row[0] for row in rows]
+
+
+def get_tracks_by_similar_artists(db: Database, artist_name: str) -> list[int]:
+    """
+    Get tracks by artists similar to the given artist.
+
+    Uses the similar_artists table populated from Last.fm data.
+
+    Args:
+        db: Database connection
+        artist_name: Name of the seed artist
+
+    Returns:
+        List of plex_ids for tracks by similar artists
+    """
+    query = """
+        SELECT DISTINCT td.plex_id
+        FROM track_data td
+        INNER JOIN artists a ON td.artist_id = a.id
+        INNER JOIN similar_artists sa ON a.id = sa.similar_artist_id
+        INNER JOIN artists seed ON sa.artist_id = seed.id
+        WHERE LOWER(seed.artist) = LOWER(?)
+        AND td.plex_id IS NOT NULL
+    """
+    db.connect()
+    rows = db.execute_select_query(query, (artist_name,))
+    db.close()
+    return [row[0] for row in rows]
+
+
+def get_tracks_by_artist_and_similar(db: Database, artist_name: str) -> list[int]:
+    """
+    Get tracks by an artist AND artists similar to them.
+
+    Convenience function that combines get_tracks_by_artist and
+    get_tracks_by_similar_artists.
+
+    Args:
+        db: Database connection
+        artist_name: Name of the seed artist
+
+    Returns:
+        List of plex_ids for tracks by artist and similar artists
+    """
+    artist_tracks = set(get_tracks_by_artist(db, artist_name))
+    similar_tracks = set(get_tracks_by_similar_artists(db, artist_name))
+    return list(artist_tracks | similar_tracks)
+
+
+def get_random_tracks(db: Database, limit: int = 50) -> list[int]:
+    """
+    Get a random selection of tracks.
+
+    Args:
+        db: Database connection
+        limit: Maximum number of tracks to return
+
+    Returns:
+        List of plex_ids for random tracks
+    """
+    query = """
+        SELECT plex_id FROM track_data
+        WHERE plex_id IS NOT NULL
+        ORDER BY RANDOM()
+        LIMIT ?
+    """
+    db.connect()
+    rows = db.execute_select_query(query, (limit,))
+    db.close()
+    return [row[0] for row in rows]
+
+
+def get_all_genres(db: Database) -> list[str]:
+    """
+    Get all unique genre names (for UI dropdowns).
+
+    Returns:
+        Sorted list of genre names
+    """
+    query = "SELECT DISTINCT genre FROM genres ORDER BY genre"
+    db.connect()
+    rows = db.execute_select_query(query)
+    db.close()
+    return [row[0] for row in rows]
+
+
+def get_all_artists_with_tracks(db: Database) -> list[str]:
+    """
+    Get all artist names that have tracks in the library (for UI dropdowns).
+
+    Returns:
+        Sorted list of artist names
+    """
+    query = """
+        SELECT DISTINCT artist FROM track_data
+        WHERE artist IS NOT NULL
+        ORDER BY artist
+    """
+    db.connect()
+    rows = db.execute_select_query(query)
+    db.close()
+    return [row[0] for row in rows]
+
+
+def get_tracks_without_bpm(db: Database) -> list[int]:
+    """
+    Get tracks that have no BPM data.
+
+    Useful for finding gaps in the data or excluding incomplete tracks.
+
+    Returns:
+        List of plex_ids for tracks without BPM
+    """
+    query = """
+        SELECT plex_id FROM track_data
+        WHERE (bpm IS NULL OR bpm = 0)
+        AND plex_id IS NOT NULL
+    """
+    db.connect()
+    rows = db.execute_select_query(query)
+    db.close()
+    return [row[0] for row in rows]
+
+
+def get_track_count_by_genre(db: Database) -> list[tuple[str, int]]:
+    """
+    Get track counts per genre (using effective genres).
+
+    Useful for understanding data distribution.
+
+    Returns:
+        List of (genre_name, track_count) tuples, sorted by count descending
+    """
+    query = """
+        SELECT g.genre, COUNT(DISTINCT td.id) as track_count
+        FROM genres g
+        LEFT JOIN track_genres tg ON g.id = tg.genre_id
+        LEFT JOIN track_data td ON tg.track_id = td.id
+        GROUP BY g.genre
+        HAVING track_count > 0
+        ORDER BY track_count DESC
+    """
+    db.connect()
+    rows = db.execute_select_query(query)
+    db.close()
+    return [(row[0], row[1]) for row in rows]
+
+
+def get_bpm_distribution(db: Database, bucket_size: int = 10) -> list[tuple[int, int]]:
+    """
+    Get track counts grouped by BPM ranges.
+
+    Args:
+        db: Database connection
+        bucket_size: Size of each BPM bucket (default 10)
+
+    Returns:
+        List of (bucket_start, track_count) tuples
+    """
+    query = f"""
+        SELECT (bpm / {bucket_size}) * {bucket_size} as bucket, COUNT(*) as count
+        FROM track_data
+        WHERE bpm IS NOT NULL AND bpm > 0
+        GROUP BY bucket
+        ORDER BY bucket
+    """
+    db.connect()
+    rows = db.execute_select_query(query)
+    db.close()
+    return [(row[0], row[1]) for row in rows]
+
+
+def build_playlist_query(
+    db: Database,
+    genres: list[str] | None = None,
+    bpm_range: tuple[int, int] | None = None,
+    artists: list[str] | None = None,
+    similar_to: str | None = None,
+    include_similar: bool = True,
+    limit: int | None = None,
+    shuffle: bool = True,
+) -> list[int]:
+    """
+    Build a playlist query by composing filters.
+
+    This is the UI-friendly wrapper that combines the foundation query
+    functions. All filters are ANDed together (intersection).
+
+    Args:
+        db: Database connection
+        genres: List of genres to include (OR within, AND with other filters)
+        bpm_range: Tuple of (min_bpm, max_bpm)
+        artists: List of specific artists to include
+        similar_to: Seed artist for similarity-based selection
+        include_similar: If True and similar_to is set, include tracks by
+            similar artists. If False, only include seed artist's tracks.
+        limit: Maximum tracks to return (applied after shuffle)
+        shuffle: If True, randomize order before applying limit
+
+    Returns:
+        List of plex_ids matching all specified criteria
+
+    Example:
+        # Uptempo rock playlist, max 50 tracks
+        plex_ids = build_playlist_query(
+            db,
+            genres=["rock", "alternative"],
+            bpm_range=(120, 150),
+            limit=50,
+        )
+    """
+    result_set: set[int] | None = None
+
+    # Apply genre filter
+    if genres:
+        genre_ids = set(get_tracks_by_genres(db, genres))
+        result_set = genre_ids if result_set is None else result_set & genre_ids
+
+    # Apply BPM range filter
+    if bpm_range:
+        min_bpm, max_bpm = bpm_range
+        bpm_ids = set(get_tracks_by_bpm_range(db, min_bpm, max_bpm))
+        result_set = bpm_ids if result_set is None else result_set & bpm_ids
+
+    # Apply artist filter
+    if artists:
+        artist_ids = set(get_tracks_by_artists(db, artists))
+        result_set = artist_ids if result_set is None else result_set & artist_ids
+
+    # Apply similarity filter
+    if similar_to:
+        if include_similar:
+            similar_ids = set(get_tracks_by_artist_and_similar(db, similar_to))
+        else:
+            similar_ids = set(get_tracks_by_artist(db, similar_to))
+        result_set = similar_ids if result_set is None else result_set & similar_ids
+
+    # Handle empty result
+    if result_set is None:
+        return []
+
+    result_list = list(result_set)
+
+    # Shuffle before limiting
+    if shuffle:
+        random.shuffle(result_list)
+
+    # Apply limit
+    if limit:
+        result_list = result_list[:limit]
+
+    return result_list
