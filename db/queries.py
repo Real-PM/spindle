@@ -18,6 +18,29 @@ import random
 from db.database import Database
 
 
+def get_tracks_by_title(db: Database, title: str) -> list[int]:
+    """
+    Get tracks matching a title (case-insensitive, partial match).
+
+    Args:
+        db: Database connection
+        title: Title substring to search for
+
+    Returns:
+        List of plex_ids for matching tracks
+    """
+    query = """
+        SELECT plex_id FROM track_data
+        WHERE LOWER(title) LIKE LOWER(?)
+        AND plex_id IS NOT NULL
+    """
+    pattern = f"%{title}%"
+    db.connect()
+    rows = db.execute_select_query(query, (pattern,))
+    db.close()
+    return [row[0] for row in rows]
+
+
 def get_tracks_by_bpm_range(
     db: Database,
     min_bpm: int,
@@ -319,28 +342,31 @@ def get_bpm_distribution(db: Database, bucket_size: int = 10) -> list[tuple[int,
 
 def build_playlist_query(
     db: Database,
+    title: str | None = None,
     genres: list[str] | None = None,
     bpm_range: tuple[int, int] | None = None,
     artists: list[str] | None = None,
     similar_to: str | None = None,
-    include_similar: bool = True,
     limit: int | None = None,
     shuffle: bool = True,
 ) -> list[int]:
     """
     Build a playlist query by composing filters.
 
-    This is the UI-friendly wrapper that combines the foundation query
-    functions. All filters are ANDed together (intersection).
+    Title, genre, and BPM filters are ANDed (intersection).
+    Artists and similar_to are unioned first, then ANDed with other filters.
+    This allows selecting "Artists: Traffic" + "Similar to: Traffic" to get
+    tracks by Traffic and artists similar to Traffic.
 
     Args:
         db: Database connection
+        title: Title substring to search for (case-insensitive partial match)
         genres: List of genres to include (OR within, AND with other filters)
         bpm_range: Tuple of (min_bpm, max_bpm)
         artists: List of specific artists to include
-        similar_to: Seed artist for similarity-based selection
-        include_similar: If True and similar_to is set, include tracks by
-            similar artists. If False, only include seed artist's tracks.
+        similar_to: Seed artist — returns tracks by similar artists only,
+            NOT the seed artist itself. Use the artists param to include
+            the seed artist's tracks.
         limit: Maximum tracks to return (applied after shuffle)
         shuffle: If True, randomize order before applying limit
 
@@ -358,6 +384,11 @@ def build_playlist_query(
     """
     result_set: set[int] | None = None
 
+    # Apply title filter
+    if title:
+        title_ids = set(get_tracks_by_title(db, title))
+        result_set = title_ids if result_set is None else result_set & title_ids
+
     # Apply genre filter
     if genres:
         genre_ids = set(get_tracks_by_genres(db, genres))
@@ -369,18 +400,15 @@ def build_playlist_query(
         bpm_ids = set(get_tracks_by_bpm_range(db, min_bpm, max_bpm))
         result_set = bpm_ids if result_set is None else result_set & bpm_ids
 
-    # Apply artist filter
+    # Apply artist + similar_to filter (unioned, then ANDed with other filters)
+    artist_pool: set[int] | None = None
     if artists:
-        artist_ids = set(get_tracks_by_artists(db, artists))
-        result_set = artist_ids if result_set is None else result_set & artist_ids
-
-    # Apply similarity filter
+        artist_pool = set(get_tracks_by_artists(db, artists))
     if similar_to:
-        if include_similar:
-            similar_ids = set(get_tracks_by_artist_and_similar(db, similar_to))
-        else:
-            similar_ids = set(get_tracks_by_artist(db, similar_to))
-        result_set = similar_ids if result_set is None else result_set & similar_ids
+        similar_ids = set(get_tracks_by_similar_artists(db, similar_to))
+        artist_pool = similar_ids if artist_pool is None else artist_pool | similar_ids
+    if artist_pool is not None:
+        result_set = artist_pool if result_set is None else result_set & artist_pool
 
     # Handle empty result
     if result_set is None:

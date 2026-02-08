@@ -1,0 +1,29 @@
+{% if tracks %}
+<p><strong>{{ count }}</strong> track{{ "s" if count != 1 else "" }} shown</p>
+<figure>
+    <table role="grid">
+        <thead>
+            <tr>
+                <th>Title</th>
+                <th>Artist</th>
+                <th>Album</th>
+                <th>BPM</th>
+                <th>Genres</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for track in tracks %}
+            <tr>
+                <td>{{ track.title }}</td>
+                <td>{{ track.artist }}</td>
+                <td>{{ track.album }}</td>
+                <td>{{ track.bpm }}</td>
+                <td>{{ track.genres }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</figure>
+{% else %}
+<p>No tracks match the current filters.</p>
+{% endif %}

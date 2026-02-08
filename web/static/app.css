@@ -1,0 +1,64 @@
+/* Playlist Builder — Pico CSS overrides */
+
+.button-row {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.button-row button {
+    width: auto;
+}
+
+/* htmx loading indicator */
+.htmx-indicator {
+    display: none;
+}
+.htmx-request .htmx-indicator,
+.htmx-request.htmx-indicator {
+    display: inline-block;
+}
+
+/* Result banners */
+.result-success {
+    border-left: 4px solid var(--pico-ins-color, #4caf50);
+}
+
+.result-error {
+    border-left: 4px solid var(--pico-del-color, #f44336);
+}
+
+/* Preview table: constrain height and scroll */
+#preview-table figure {
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+/* Tom Select dark theme adjustments */
+[data-theme="dark"] .ts-wrapper .ts-control {
+    background: var(--pico-form-element-background-color);
+    color: var(--pico-form-element-color);
+    border-color: var(--pico-form-element-border-color);
+}
+
+[data-theme="dark"] .ts-wrapper .ts-dropdown {
+    background: var(--pico-form-element-background-color);
+    color: var(--pico-form-element-color);
+    border-color: var(--pico-form-element-border-color);
+}
+
+[data-theme="dark"] .ts-wrapper .ts-dropdown .active {
+    background: var(--pico-primary-background);
+    color: var(--pico-primary-inverse);
+}
+
+[data-theme="dark"] .ts-wrapper .ts-control .item {
+    background: var(--pico-primary-background);
+    color: var(--pico-primary-inverse);
+    border: none;
+    border-radius: 4px;
+}
+
+[data-theme="dark"] .ts-wrapper .ts-control input {
+    color: var(--pico-form-element-color);
+}
