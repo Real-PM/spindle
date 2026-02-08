@@ -677,93 +677,35 @@ class TestLastFmTrackEnrichment:
 
 
 @pytest.fixture(scope="module")
-def bpm_enriched_sandbox(lastfm_track_enriched_sandbox):
+def essentia_bpm_sandbox(lastfm_track_enriched_sandbox):
     """
-    Phase 7.1: Enrich sandbox with BPM data from AcousticBrainz.
+    Phase 7: Enrich sandbox with BPM data from local Essentia analysis.
 
     Depends on lastfm_track_enriched_sandbox to maximize MBID coverage.
-    More MBIDs from Last.fm = higher AcousticBrainz hit rate.
     """
     db, lastfm_track_stats = lastfm_track_enriched_sandbox
 
-    print("\nPhase 7.1: AcousticBrainz BPM lookup...")
+    print("\nPhase 7: Essentia BPM analysis...")
 
-    # Run AcousticBrainz BPM lookup (uses MBIDs from ffprobe + Last.fm)
-    stats = dbu.process_bpm_acousticbrainz(db)
-
-    return db, stats
-
-
-class TestBpmEnrichment:
-    """Tests for BPM enrichment via AcousticBrainz."""
-
-    def test_bpm_stats_returned(self, bpm_enriched_sandbox):
-        """Should return stats dict."""
-        db, stats = bpm_enriched_sandbox
-
-        assert isinstance(stats, dict)
-        assert "total" in stats
-        assert "hits" in stats
-        assert "misses" in stats
-        assert "updated" in stats
-
-    def test_bpm_values_populated(self, bpm_enriched_sandbox):
-        """Some tracks should have BPM values."""
-        db, stats = bpm_enriched_sandbox
-
-        if stats["hits"] > 0:
-            db.connect()
-            result = db.execute_select_query("""
-                SELECT COUNT(*) FROM track_data
-                WHERE bpm IS NOT NULL AND bpm > 0
-            """)
-            db.close()
-
-            assert result[0][0] > 0
-            assert result[0][0] == stats["updated"]
-
-    def test_bpm_values_in_valid_range(self, bpm_enriched_sandbox):
-        """All BPM values should be reasonable."""
-        db, stats = bpm_enriched_sandbox
-
-        db.connect()
-        result = db.execute_select_query("""
-            SELECT bpm FROM track_data
-            WHERE bpm IS NOT NULL AND bpm > 0
-        """)
-        db.close()
-
-        for (bpm,) in result:
-            assert 40 <= bpm <= 220, f"BPM {bpm} outside valid range"
-
-
-@pytest.fixture(scope="module")
-def essentia_bpm_sandbox(bpm_enriched_sandbox):
-    """
-    Enrich sandbox with BPM data from local Essentia analysis.
-    Runs AFTER AcousticBrainz (Phase 7.1) to fill gaps.
-    This is Phase 7.2 in the pipeline.
-    """
-    db, acousticbrainz_stats = bpm_enriched_sandbox
-
-    # Run Essentia BPM analysis for tracks still without BPM
+    # Run Essentia BPM analysis
     # Conservative settings to prevent CPU overheating during extended analysis
     essentia_stats = dbu.process_bpm_essentia(
         db,
         use_test_paths=True,
         batch_size=25,
         rest_between_batches=10.0,
+        include_researched=True,
     )
 
-    return db, acousticbrainz_stats, essentia_stats
+    return db, essentia_stats
 
 
 class TestEssentiaBpmEnrichment:
-    """Tests for Phase 7.2: Local BPM analysis using Essentia."""
+    """Tests for Phase 7: Local BPM analysis using Essentia."""
 
     def test_essentia_stats_returned(self, essentia_bpm_sandbox):
         """Should return stats dict with expected keys."""
-        db, _, essentia_stats = essentia_bpm_sandbox
+        db, essentia_stats = essentia_bpm_sandbox
 
         assert isinstance(essentia_stats, dict)
         assert "total" in essentia_stats
@@ -772,25 +714,19 @@ class TestEssentiaBpmEnrichment:
         assert "updated" in essentia_stats
         assert "skipped" in essentia_stats
 
-    def test_essentia_processed_remaining_tracks(self, essentia_bpm_sandbox):
-        """Essentia should process tracks that AcousticBrainz missed."""
-        db, acousticbrainz_stats, essentia_stats = essentia_bpm_sandbox
+    def test_essentia_processed_tracks(self, essentia_bpm_sandbox):
+        """Essentia should process tracks without BPM."""
+        db, essentia_stats = essentia_bpm_sandbox
 
         if essentia_stats.get("skipped"):
             pytest.skip("Essentia BPM analysis was skipped (environment not configured)")
 
-        # Log what happened for visibility
-        print(f"\nAcousticBrainz stats: {acousticbrainz_stats}")
-        print(f"Essentia stats: {essentia_stats}")
-
-        # If AcousticBrainz had misses and Essentia ran, we should have analyzed some
-        if acousticbrainz_stats.get("misses", 0) > 0:
-            # Not all tracks may be accessible, but we should have tried
-            assert essentia_stats["total"] >= 0
+        print(f"\nEssentia stats: {essentia_stats}")
+        assert essentia_stats["total"] >= 0
 
     def test_essentia_bpm_values_valid(self, essentia_bpm_sandbox):
         """Essentia-analyzed BPM values should be in valid range."""
-        db, _, essentia_stats = essentia_bpm_sandbox
+        db, essentia_stats = essentia_bpm_sandbox
 
         if essentia_stats.get("skipped") or essentia_stats.get("analyzed", 0) == 0:
             pytest.skip("No tracks were analyzed by Essentia")
@@ -805,9 +741,9 @@ class TestEssentiaBpmEnrichment:
         for (bpm,) in result:
             assert 40 <= bpm <= 220, f"BPM {bpm} outside valid range"
 
-    def test_combined_bpm_coverage(self, essentia_bpm_sandbox):
-        """Combined AcousticBrainz + Essentia should maximize BPM coverage."""
-        db, acousticbrainz_stats, essentia_stats = essentia_bpm_sandbox
+    def test_bpm_coverage(self, essentia_bpm_sandbox):
+        """Essentia should provide BPM coverage."""
+        db, essentia_stats = essentia_bpm_sandbox
 
         db.connect()
         total_tracks = db.execute_select_query("SELECT COUNT(*) FROM track_data")[0][0]
@@ -823,7 +759,6 @@ class TestEssentiaBpmEnrichment:
         print(f"{'=' * 50}")
         print(f"Total tracks:     {total_tracks}")
         print(f"Tracks with BPM:  {tracks_with_bpm} ({coverage_pct:.1f}%)")
-        print(f"AcousticBrainz:   {acousticbrainz_stats.get('updated', 0)} tracks")
         print(f"Essentia:         {essentia_stats.get('updated', 0)} tracks")
         print(f"{'=' * 50}")
 
@@ -839,7 +774,7 @@ def finalized_sandbox(essentia_bpm_sandbox):
     This is the final step of the pipeline, recording the import
     for future incremental updates.
     """
-    db, acousticbrainz_stats, essentia_stats = essentia_bpm_sandbox
+    db, essentia_stats = essentia_bpm_sandbox
 
     # Get the track count for history
     db.connect()

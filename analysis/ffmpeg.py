@@ -533,7 +533,7 @@ def process_mbid_from_files(
                 stats["mbid"]["extracted"] += 1
                 try:
                     database.execute_query(
-                        "UPDATE track_data SET musicbrainz_id = %s WHERE id = %s",
+                        "UPDATE track_data SET musicbrainz_id = ? WHERE id = ?",
                         (mbid, track_id)
                     )
                     stats["mbid"]["updated"] += 1
@@ -549,7 +549,7 @@ def process_mbid_from_files(
                 stats["acoustid"]["extracted"] += 1
                 try:
                     database.execute_query(
-                        "UPDATE track_data SET acoustid = %s WHERE id = %s",
+                        "UPDATE track_data SET acoustid = ? WHERE id = ?",
                         (acoustid, track_id)
                     )
                     stats["acoustid"]["updated"] += 1
@@ -659,7 +659,7 @@ def process_artist_mbid_from_files(
 
         # Update database
         try:
-            update_query = "UPDATE artists SET musicbrainz_id = %s WHERE id = %s"
+            update_query = "UPDATE artists SET musicbrainz_id = ? WHERE id = ?"
             database.execute_query(update_query, (artist_mbid, artist_id))
             stats["updated"] += 1
             logger.debug(f"Updated artist '{artist_name}' with MBID {artist_mbid}")
@@ -831,7 +831,7 @@ def refresh_mbid_for_artists(
 
             if not dry_run:
                 try:
-                    update_query = "UPDATE track_data SET musicbrainz_id = %s WHERE id = %s"
+                    update_query = "UPDATE track_data SET musicbrainz_id = ? WHERE id = ?"
                     database.execute_query(update_query, (new_track_mbid, track_id))
                     stats["tracks"]["updated"] += 1
                 except Exception as e:
@@ -856,7 +856,7 @@ def refresh_mbid_for_artists(
 
                 if not dry_run:
                     try:
-                        update_query = "UPDATE track_data SET acoustid = %s WHERE id = %s"
+                        update_query = "UPDATE track_data SET acoustid = ? WHERE id = ?"
                         database.execute_query(update_query, (new_acoustid, track_id))
                         stats["acoustids"]["updated"] += 1
                     except Exception as e:
@@ -888,7 +888,7 @@ def refresh_mbid_for_artists(
 
             if not dry_run:
                 try:
-                    update_query = "UPDATE artists SET musicbrainz_id = %s WHERE id = %s"
+                    update_query = "UPDATE artists SET musicbrainz_id = ? WHERE id = ?"
                     database.execute_query(update_query, (new_mbid, artist_id))
                     stats["artist_mbids"]["updated"] += 1
                 except Exception as e:

@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-A Python application that extracts music metadata from a Plex server, enriches it with data from external APIs (Last.fm, AcousticBrainz, Discogs), performs audio analysis (BPM detection), and stores everything in a MySQL database for playlist generation and music discovery.
+A Python application that extracts music metadata from a Plex server, enriches it with data from external APIs (Last.fm, Discogs, Spotify), performs audio analysis (BPM detection via Essentia), and stores everything in a SQLite database for playlist generation and music discovery.
 
 **Python Version:** 3.13  
 **Primary User:** Jay (experienced developer, prefers hands-on understanding of code)
@@ -12,11 +12,9 @@ A Python application that extracts music metadata from a Plex server, enriches i
 ### Virtual Env
 ~/virtual-envs/music_organizer_clean/.venv
 
-### Database  
-Database credentials are in `.env` (gitignored).  
-DB_HOST=athena.eagle-mimosa.ts.net:3306
-TEST_DB=sandbox
-DB=bpm_swarm1
+### Database
+SQLite database at `data/music_organizer.db` (path configured in `db/__init__.py`).
+Test database: `data/sandbox.db`
 ---
 
 ## Core Development Philosophy
@@ -59,8 +57,8 @@ process_everything(tracks, db)  # What does this do? Hard to test pieces.
 ```python
 from typing import Optional
 
-def get_bpm_by_mbid(mbid: str) -> Optional[float]:
-    """Fetch BPM from AcousticBrainz for a single MusicBrainz ID."""
+def get_bpm_essentia(filepath: str) -> Optional[float]:
+    """Analyze BPM locally using Essentia."""
     ...
 ```
 
@@ -135,7 +133,7 @@ Log levels:
 
 ## Error Handling Strategy
 
-### External APIs (Last.fm, AcousticBrainz, Discogs)
+### External APIs (Last.fm, Discogs, Spotify)
 
 **Graceful degradation:** Don't crash the pipeline because one API call failed.
 
@@ -171,9 +169,9 @@ More strict—database errors often indicate real problems:
 def update_bpm(db: Database, track_id: int, bpm: float) -> bool:
     """Update BPM for a track. Returns True on success, False on failure."""
     try:
-        db.execute("UPDATE track_data SET bpm = %s WHERE id = %s", (bpm, track_id))
+        db.execute("UPDATE track_data SET bpm = ? WHERE id = ?", (bpm, track_id))
         return True
-    except mysql.connector.Error as e:
+    except sqlite3.Error as e:
         logger.error("Failed to update BPM for track {}: {}", track_id, e)
         return False
 ```
@@ -240,12 +238,12 @@ Future consideration: 1Password CLI (`op`) can inject secrets at runtime without
 
 ```
 test/
-├── test_acousticbrainz.py
 ├── test_lastfm.py
-├── e2e_test.py          # End-to-end: full pipeline
-├── e2e2.py              # Alternative e2e scenarios
-├── db_update_test.py
-└── lib_test.py
+├── test_e2e_pipeline.py    # End-to-end: full pipeline
+├── test_incremental_enrichment.py
+├── test_incremental_update.py
+├── test_metadata_refresh.py
+└── conftest.py
 ```
 
 ### Running Tests
@@ -255,10 +253,7 @@ test/
 pytest
 
 # Specific test file
-pytest test/test_acousticbrainz.py
-
-# Specific test function
-pytest test/test_acousticbrainz.py::test_bulk_lookup
+pytest test/test_e2e_pipeline.py
 
 # With output
 pytest -v -s
@@ -280,10 +275,10 @@ def test_parse_genre_string():
 import pytest
 
 @pytest.mark.integration
-def test_acousticbrainz_real_lookup():
+def test_lastfm_artist_lookup():
     """Requires network access."""
-    result = get_bpm_by_mbid("known-valid-mbid")
-    assert result is None or isinstance(result, float)
+    result = get_artist_info("The Beatles")
+    assert result is None or isinstance(result, dict)
 ```
 
 **End-to-end tests** are the primary success metric for this project. If e2e tests pass, the system works.
@@ -296,11 +291,11 @@ def test_acousticbrainz_real_lookup():
 music_organizer/
 ├── analysis/               # External API clients and audio analysis
 │   ├── __init__.py
-│   ├── acousticbrainz.py   # BPM lookup via MusicBrainz IDs
-│   ├── bpm.py              # Local BPM analysis (essentia, future)
+│   ├── bpm.py              # Local BPM analysis (Essentia)
 │   ├── discogs.py          # Discogs API client
 │   ├── ffmpeg.py           # Audio file metadata extraction
-│   └── lastfm.py           # Last.fm API client
+│   ├── lastfm.py           # Last.fm API client
+│   └── spotify.py          # Spotify API client
 ├── config/                 # Configuration utilities
 │   ├── __init__.py         # Exports setup_logging
 │   └── logging.py          # Centralized loguru setup
@@ -329,7 +324,7 @@ music_organizer/
 ### Initial Load Pipeline
 
 ```
-Plex Server → CSV Export → Pandas Transform → MySQL Load
+Plex Server → CSV Export → Pandas Transform → SQLite Load
 ```
 
 See `Initial_Load_Workflow.MD` for detailed steps. Key modules:
@@ -341,12 +336,10 @@ See `Initial_Load_Workflow.MD` for detailed steps. Key modules:
 ### BPM Enrichment Pipeline
 
 ```
-Phase 1: AcousticBrainz API (60-80% coverage)
-Phase 2: Essentia local analysis (remaining tracks)
+Essentia local analysis (all tracks without BPM)
 ```
 
-- `analysis.acousticbrainz`: API-based BPM lookup using MusicBrainz IDs
-- `analysis.bpm`: Local audio analysis (future: essentia, replacing librosa)
+- `analysis.bpm`: Local audio analysis using Essentia's RhythmExtractor2013
 
 ---
 
@@ -374,14 +367,13 @@ Key packages:
 - `loguru`: Logging
 - `requests`: HTTP client for APIs
 - `tenacity`: Retry logic with backoff
-- `mysql-connector-python`: MySQL driver
 - `pandas`: Data transformation
 - `PlexAPI`: Plex server interaction
 - `python-dotenv`: Environment variable loading
 - `ruff`: Formatting and linting
 - `pytest`: Testing
 
-**Note:** librosa is incompatible with Python 3.13 and has been removed. Essentia will be used for local BPM analysis in Phase 2.
+**Note:** librosa and AcousticBrainz have been removed. Essentia is used for all local BPM analysis. AcousticBrainz shut down in 2022.
 
 ---
 
@@ -402,8 +394,8 @@ pytest test/e2e_test.py -v -s
 ruff check . --fix
 ruff format .
 
-# Run specific analysis
-python test/test_acousticbrainz.py
+# Run e2e pipeline test
+pytest test/test_e2e_pipeline.py -v -s
 ```
 
 ---
@@ -451,12 +443,9 @@ Types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`
 
 Example:
 ```
-feat: add AcousticBrainz bulk BPM lookup
+feat: add researched_at flag to skip already-processed tracks
 
-Implements batch API requests (25 MBIDs per request) to efficiently
-fetch BPM data for tracks with MusicBrainz IDs. Falls back to
-individual requests on batch failure.
-
-Closes #12
+Tracks that have been through the pipeline get stamped with researched_at
+so incremental runs only analyze BPM for genuinely new tracks.
 ```
 Do not include "Claude Code" in commit messages.

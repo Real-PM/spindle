@@ -245,7 +245,7 @@ class TestRefreshMetadataForArtists:
         # Verify MBID unchanged
         db_test.connect()
         after = db_test.execute_select_query(
-            "SELECT musicbrainz_id FROM track_data WHERE id = %s",
+            "SELECT musicbrainz_id FROM track_data WHERE id = ?",
             (track_id,),
         )
         db_test.close()

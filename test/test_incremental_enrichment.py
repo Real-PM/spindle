@@ -60,7 +60,7 @@ class TestGetPrimaryArtistsWithoutSimilar:
         db_test.connect()
         for artist_id, artist_name in result[:5]:  # Check first 5
             track_count = db_test.execute_select_query(
-                "SELECT COUNT(*) FROM track_data WHERE artist_id = %s", (artist_id,)
+                "SELECT COUNT(*) FROM track_data WHERE artist_id = ?", (artist_id,)
             )[0][0]
             assert track_count > 0, f"Artist {artist_name} should have tracks"
         db_test.close()
@@ -110,7 +110,7 @@ class TestGetStubArtistsWithoutMbid:
         db_test.connect()
         for artist_id, artist_name in result[:5]:  # Check first 5
             mbid = db_test.execute_select_query(
-                "SELECT musicbrainz_id FROM artists WHERE id = %s", (artist_id,)
+                "SELECT musicbrainz_id FROM artists WHERE id = ?", (artist_id,)
             )[0][0]
             assert mbid is None, f"Artist {artist_name} should not have MBID"
         db_test.close()
@@ -150,7 +150,7 @@ class TestEnrichArtistsCore:
         # Verify no similar_artists before
         db_test.connect()
         before_count = db_test.execute_select_query(
-            "SELECT COUNT(*) FROM similar_artists WHERE artist_id = %s", (test_artist_id,)
+            "SELECT COUNT(*) FROM similar_artists WHERE artist_id = ?", (test_artist_id,)
         )[0][0]
         db_test.close()
 
@@ -164,7 +164,7 @@ class TestEnrichArtistsCore:
         # Verify STILL no similar_artists after
         db_test.connect()
         after_count = db_test.execute_select_query(
-            "SELECT COUNT(*) FROM similar_artists WHERE artist_id = %s", (test_artist_id,)
+            "SELECT COUNT(*) FROM similar_artists WHERE artist_id = ?", (test_artist_id,)
         )[0][0]
         db_test.close()
 
@@ -215,7 +215,7 @@ class TestEnrichArtistsFull:
         if result["similar_added"] > 0:
             db_test.connect()
             after_count = db_test.execute_select_query(
-                "SELECT COUNT(*) FROM similar_artists WHERE artist_id = %s", (test_artist_id,)
+                "SELECT COUNT(*) FROM similar_artists WHERE artist_id = ?", (test_artist_id,)
             )[0][0]
             db_test.close()
             assert after_count > 0, "Full enrichment should add similar artists"
