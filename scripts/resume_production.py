@@ -136,6 +136,9 @@ def main():
     researched_count = dbu.mark_tracks_researched(db)
     logger.info(f"Marked {researched_count} tracks as researched")
 
+    # Record in history so incremental runs know the cutoff date
+    dbf.update_history(db, status["total_tracks"])
+
     # Final status
     end_time = datetime.now()
     duration = end_time - start_time

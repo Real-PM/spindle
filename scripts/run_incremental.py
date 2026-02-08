@@ -91,12 +91,12 @@ def main():
         since_date = args.since_date
         logger.info(f"Using provided since_date: {since_date}")
     else:
-        since_date = dbf.get_last_update_date(db)
+        since_date = dbf.get_latest_added_date(db)
         if since_date:
             since_date = since_date if isinstance(since_date, str) else since_date.strftime("%Y-%m-%d")
-            logger.info(f"Using last history entry: {since_date}")
+            logger.info(f"Using latest added_date from track_data: {since_date}")
         else:
-            logger.warning("No history found - will process ALL tracks (this may take a while)")
+            logger.warning("No tracks in database - will process ALL tracks")
             since_date = None
 
     # Connect to Plex

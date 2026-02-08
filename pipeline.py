@@ -212,11 +212,11 @@ def run_incremental_update(
         "tracks_researched": 0,
     }
 
-    # Determine cutoff date
+    # Determine cutoff date — use the newest track we already have
     if since_date:
         cutoff = since_date
     else:
-        cutoff = dbf.get_last_update_date(database)
+        cutoff = dbf.get_latest_added_date(database)
         if cutoff:
             cutoff = cutoff.strftime("%Y-%m-%d") if hasattr(cutoff, 'strftime') else cutoff
 
@@ -261,10 +261,10 @@ def run_incremental_update(
     if not skip_ffprobe:
         logger.info("Running MBID extraction from files...")
         stats["mbid_extraction"]["tracks"] = process_mbid_from_files(
-            database, use_test_paths=use_test_paths
+            database, use_test_paths=use_test_paths, include_researched=retry_bpm
         )
         stats["mbid_extraction"]["artists"] = process_artist_mbid_from_files(
-            database, use_test_paths=use_test_paths
+            database, use_test_paths=use_test_paths, include_researched=retry_bpm
         )
 
     # Last.fm enrichment - targeted processing to avoid re-processing all records
@@ -391,10 +391,10 @@ def run_full_pipeline(
     if not skip_ffprobe:
         logger.info("Running MBID extraction from files...")
         stats["mbid_extraction"]["tracks"] = process_mbid_from_files(
-            database, use_test_paths=use_test_paths
+            database, use_test_paths=use_test_paths, include_researched=True
         )
         stats["mbid_extraction"]["artists"] = process_artist_mbid_from_files(
-            database, use_test_paths=use_test_paths
+            database, use_test_paths=use_test_paths, include_researched=True
         )
 
     # Last.fm enrichment

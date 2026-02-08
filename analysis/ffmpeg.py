@@ -420,6 +420,7 @@ def process_mbid_from_files(
     use_test_paths: bool = False,
     batch_size: int = 100,
     limit: int | None = None,
+    include_researched: bool = False,
 ) -> dict:
     """
     Extract MusicBrainz IDs and AcousticIDs from audio files and update database.
@@ -433,6 +434,8 @@ def process_mbid_from_files(
         use_test_paths: If True, use test path mapping; otherwise use production
         batch_size: Log progress every N tracks
         limit: Optional limit on number of tracks to process (for testing)
+        include_researched: If True, process all tracks missing MBID/AcousticID.
+            If False (default), only process tracks where researched_at IS NULL.
 
     Returns:
         Dict with stats:
@@ -491,6 +494,8 @@ def process_mbid_from_files(
             OR (acoustid IS NULL OR acoustid = '')
           )
     """
+    if not include_researched:
+        query += " AND researched_at IS NULL"
     if limit:
         query += f" LIMIT {limit}"
 
@@ -571,6 +576,7 @@ def process_mbid_from_files(
 def process_artist_mbid_from_files(
     database: Database,
     use_test_paths: bool = False,
+    include_researched: bool = False,
 ) -> dict:
     """
     Extract MusicBrainz Artist IDs from audio files and update artists table.
@@ -580,6 +586,8 @@ def process_artist_mbid_from_files(
     Args:
         database: Database connection
         use_test_paths: If True, use test path mapping; otherwise use production
+        include_researched: If True, process all artists missing MBID.
+            If False (default), only sample from tracks where researched_at IS NULL.
 
     Returns:
         Dict with stats:
@@ -617,8 +625,10 @@ def process_artist_mbid_from_files(
         JOIN track_data td ON td.artist_id = a.id
         WHERE (a.musicbrainz_id IS NULL OR a.musicbrainz_id = '')
         AND td.filepath IS NOT NULL AND td.filepath != ''
-        GROUP BY a.id, a.artist
     """
+    if not include_researched:
+        query += " AND td.researched_at IS NULL"
+    query += " GROUP BY a.id, a.artist"
     artists = database.execute_select_query(query)
     database.close()
 
