@@ -71,6 +71,7 @@ def main():
     dbf.add_acoustid_column(db)
     dbf.add_enrichment_attempted_column(db)
     dbf.add_lastfm_attempted_column(db)
+    dbf.add_researched_at_column(db)
 
     # Check current status
     logger.info("Checking current database status...")
@@ -117,17 +118,9 @@ def main():
     track_stats = dbu.process_lastfm_track_data(db, rate_limit_delay=0.25)
     logger.info(f"Track enrichment: {track_stats}")
 
-    # Phase 4: BPM enrichment (AcousticBrainz)
+    # Phase 4: BPM enrichment (Essentia local analysis)
     logger.info("=" * 60)
-    logger.info("PHASE 4: AcousticBrainz BPM lookup")
-    logger.info("=" * 60)
-
-    bpm_ab_stats = dbu.process_bpm_acousticbrainz(db)
-    logger.info(f"AcousticBrainz BPM: {bpm_ab_stats}")
-
-    # Phase 5: BPM enrichment (Essentia local analysis)
-    logger.info("=" * 60)
-    logger.info("PHASE 5: Essentia BPM analysis")
+    logger.info("PHASE 4: Essentia BPM analysis")
     logger.info("=" * 60)
 
     bpm_essentia_stats = dbu.process_bpm_essentia(
@@ -135,8 +128,13 @@ def main():
         use_test_paths=False,
         batch_size=25,
         rest_between_batches=10.0,
+        include_researched=True,
     )
     logger.info(f"Essentia BPM: {bpm_essentia_stats}")
+
+    # Mark all tracks as researched after BPM phase completes
+    researched_count = dbu.mark_tracks_researched(db)
+    logger.info(f"Marked {researched_count} tracks as researched")
 
     # Final status
     end_time = datetime.now()

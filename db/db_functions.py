@@ -228,6 +228,57 @@ def add_lastfm_attempted_column(database: Database) -> bool:
         return False
 
 
+def add_researched_at_column(database: Database) -> bool:
+    """Add researched_at column to track_data table.
+
+    This column tracks when a track was last run through the full pipeline
+    (including BPM analysis). Allows incremental runs to skip tracks that
+    have already been researched, while still allowing explicit retries.
+
+    On first add, backfills all existing tracks with the current timestamp
+    so only truly new tracks are processed on the next incremental run.
+
+    Args:
+        database: Database connection
+
+    Returns:
+        True if column was added, False if it already exists or error occurred
+    """
+    database.connect()
+
+    check_query = """
+        SELECT COUNT(*)
+        FROM pragma_table_info('track_data')
+        WHERE name = 'researched_at'
+    """
+    result = database.execute_select_query(check_query)
+
+    if result and result[0][0] > 0:
+        logger.info("researched_at column already exists in track_data")
+        database.close()
+        return False
+
+    try:
+        alter_query = "ALTER TABLE track_data ADD COLUMN researched_at TEXT"
+        database.execute_query(alter_query)
+        logger.info("Added researched_at column to track_data table")
+
+        # Backfill: mark all existing tracks as researched so only new tracks
+        # are picked up by the next incremental run
+        backfill_query = "UPDATE track_data SET researched_at = datetime('now')"
+        database.execute_query(backfill_query)
+        count_result = database.execute_select_query("SELECT changes()")
+        backfill_count = count_result[0][0] if count_result else 0
+        logger.info(f"Backfilled researched_at for {backfill_count} existing tracks")
+
+        database.close()
+        return True
+    except Exception as e:
+        logger.error(f"Failed to add researched_at column: {e}")
+        database.close()
+        return False
+
+
 def add_spotify_columns(database: Database) -> bool:
     """Add Spotify-related columns to track_data table.
 

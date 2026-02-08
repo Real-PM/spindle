@@ -5,8 +5,6 @@ from time import sleep
 
 from loguru import logger
 
-import analysis.acousticbrainz as acousticbrainz
-import analysis.acoustid as acoustid
 import analysis.bpm as bpm_analysis
 import analysis.lastfm as lastfm
 from analysis.ffmpeg import (
@@ -756,164 +754,19 @@ def process_lastfm_track_data(
     return stats
 
 
-def process_bpm_acousticbrainz(database: Database) -> dict:
-    """
-    Fetch BPM from AcousticBrainz for tracks that need it.
-
-    Processing order:
-    1. Tracks with MBID - look up directly via AcousticBrainz
-    2. Tracks with AcousticID but no MBID - resolve AcousticID to MBID first,
-       then look up via AcousticBrainz
-
-    Args:
-        database: Database connection object
-
-    Returns:
-        dict with stats including mbid_lookup and acoustid_lookup sub-dicts
-    """
-    logger.info("Starting AcousticBrainz BPM lookup")
-
-    stats = {
-        "mbid_lookup": {
-            "total": 0,
-            "hits": 0,
-            "misses": 0,
-            "updated": 0,
-        },
-        "acoustid_lookup": {
-            "total": 0,
-            "resolved": 0,
-            "hits": 0,
-            "misses": 0,
-            "updated": 0,
-        },
-        "total": 0,
-        "hits": 0,
-        "updated": 0,
-    }
-
-    database.connect()
-
-    # Phase 1: Tracks with MBID but no BPM
-    mbid_query = """
-        SELECT id, musicbrainz_id
-        FROM track_data
-        WHERE musicbrainz_id IS NOT NULL
-          AND musicbrainz_id != ''
-          AND (bpm IS NULL OR bpm = 0)
-    """
-    mbid_tracks = database.execute_select_query(mbid_query)
-    stats["mbid_lookup"]["total"] = len(mbid_tracks)
-
-    if mbid_tracks:
-        logger.info(f"Phase 1: Found {len(mbid_tracks)} tracks with MBID but no BPM")
-
-        # Fetch BPMs from AcousticBrainz
-        bpm_results = acousticbrainz.fetch_bpm_for_tracks(mbid_tracks, use_bulk=True)
-        stats["mbid_lookup"]["hits"] = len(bpm_results)
-        stats["mbid_lookup"]["misses"] = len(mbid_tracks) - len(bpm_results)
-
-        # Update database with results
-        for track_id, bpm_value in bpm_results.items():
-            try:
-                bpm_int = round(bpm_value)
-                database.execute_query(
-                    "UPDATE track_data SET bpm = ? WHERE id = ?", (bpm_int, track_id)
-                )
-                stats["mbid_lookup"]["updated"] += 1
-                logger.debug(f"Updated track {track_id} with BPM {bpm_int}")
-            except Exception as e:
-                logger.error(f"Failed to update BPM for track {track_id}: {e}")
-
-        logger.info(
-            f"Phase 1 complete: {stats['mbid_lookup']['hits']}/{stats['mbid_lookup']['total']} hits "
-            f"({stats['mbid_lookup']['hits'] / stats['mbid_lookup']['total'] * 100:.1f}%)"
-            if stats["mbid_lookup"]["total"] > 0 else "Phase 1 complete: no tracks"
-        )
-    else:
-        logger.info("Phase 1: No tracks with MBID needing BPM lookup")
-
-    # Phase 2: Tracks with AcousticID but no MBID and no BPM
-    acoustid_query = """
-        SELECT id, acoustid
-        FROM track_data
-        WHERE (musicbrainz_id IS NULL OR musicbrainz_id = '')
-          AND acoustid IS NOT NULL
-          AND acoustid != ''
-          AND (bpm IS NULL OR bpm = 0)
-    """
-    acoustid_tracks = database.execute_select_query(acoustid_query)
-    stats["acoustid_lookup"]["total"] = len(acoustid_tracks)
-
-    if acoustid_tracks:
-        logger.info(f"Phase 2: Found {len(acoustid_tracks)} tracks with AcousticID (no MBID) but no BPM")
-
-        # Resolve AcousticIDs to MBIDs
-        resolved_mbids = acoustid.resolve_acoustids_to_mbids(acoustid_tracks)
-        stats["acoustid_lookup"]["resolved"] = len(resolved_mbids)
-
-        if resolved_mbids:
-            logger.info(f"Resolved {len(resolved_mbids)} AcousticIDs to MBIDs")
-
-            # Build list of (track_id, mbid) for AcousticBrainz lookup
-            resolved_tracks = [(track_id, mbid) for track_id, mbid in resolved_mbids.items()]
-
-            # Fetch BPMs from AcousticBrainz using resolved MBIDs
-            bpm_results = acousticbrainz.fetch_bpm_for_tracks(resolved_tracks, use_bulk=True)
-            stats["acoustid_lookup"]["hits"] = len(bpm_results)
-            stats["acoustid_lookup"]["misses"] = len(resolved_tracks) - len(bpm_results)
-
-            # Update database with BPM results AND store the resolved MBID
-            for track_id, bpm_value in bpm_results.items():
-                try:
-                    bpm_int = round(bpm_value)
-                    resolved_mbid = resolved_mbids[track_id]
-                    # Update both BPM and the resolved MBID
-                    database.execute_query(
-                        "UPDATE track_data SET bpm = ?, musicbrainz_id = ? WHERE id = ?",
-                        (bpm_int, resolved_mbid, track_id)
-                    )
-                    stats["acoustid_lookup"]["updated"] += 1
-                    logger.debug(f"Updated track {track_id} with BPM {bpm_int} and MBID {resolved_mbid}")
-                except Exception as e:
-                    logger.error(f"Failed to update BPM for track {track_id}: {e}")
-
-            logger.info(
-                f"Phase 2 complete: {stats['acoustid_lookup']['resolved']} resolved, "
-                f"{stats['acoustid_lookup']['hits']} BPM hits"
-            )
-        else:
-            logger.info("Phase 2: No AcousticIDs could be resolved to MBIDs (check ACOUSTID_API_KEY)")
-    else:
-        logger.info("Phase 2: No tracks with AcousticID (without MBID) needing BPM lookup")
-
-    database.close()
-
-    # Calculate totals
-    stats["total"] = stats["mbid_lookup"]["total"] + stats["acoustid_lookup"]["total"]
-    stats["hits"] = stats["mbid_lookup"]["hits"] + stats["acoustid_lookup"]["hits"]
-    stats["updated"] = stats["mbid_lookup"]["updated"] + stats["acoustid_lookup"]["updated"]
-
-    logger.info(f"AcousticBrainz BPM lookup complete: {stats['updated']}/{stats['total']} tracks updated")
-    if stats["total"] > 0:
-        logger.info(f"Overall hit rate: {stats['hits'] / stats['total'] * 100:.1f}%")
-
-    return stats
-
-
 def process_bpm_essentia(
     database: Database,
     use_test_paths: bool = False,
     batch_size: int = 25,
     limit: int | None = None,
     rest_between_batches: float = 10.0,
+    include_researched: bool = False,
 ) -> dict:
     """
     Analyze BPM locally using Essentia for tracks without BPM data.
 
-    This is Phase 7.2 in the pipeline - a fallback for tracks that didn't get
-    BPM from AcousticBrainz (Phase 7.1). It analyzes the actual audio files
-    using Essentia's RhythmExtractor2013 algorithm.
+    Analyzes the actual audio files using Essentia's RhythmExtractor2013
+    algorithm.
 
     Args:
         database: Database connection object
@@ -924,6 +777,9 @@ def process_bpm_essentia(
         rest_between_batches: Seconds to pause between batches for CPU thermal
             management. Audio analysis is CPU-intensive; insufficient rest can
             cause system overheating. Default 10 seconds is conservative.
+        include_researched: If True, process all tracks with NULL BPM (including
+            previously researched ones). If False (default), only process tracks
+            where researched_at IS NULL (new tracks only).
 
     Returns:
         Dict with stats:
@@ -976,6 +832,8 @@ def process_bpm_essentia(
         WHERE (bpm IS NULL OR bpm = 0)
         AND filepath IS NOT NULL AND filepath != ''
     """
+    if not include_researched:
+        query += " AND researched_at IS NULL"
     if limit:
         query += f" LIMIT {limit}"
 
@@ -1056,3 +914,27 @@ def process_bpm_essentia(
         logger.info(f"Analysis success rate: {coverage_pct:.1f}%")
 
     return stats
+
+
+def mark_tracks_researched(database: Database) -> int:
+    """Mark all un-researched tracks as researched.
+
+    Sets researched_at = now for any track where it's currently NULL.
+    Call this after BPM analysis completes to prevent re-processing
+    on the next incremental run.
+
+    Args:
+        database: Database connection object
+
+    Returns:
+        Number of tracks marked as researched
+    """
+    database.connect()
+    database.execute_query(
+        "UPDATE track_data SET researched_at = datetime('now') WHERE researched_at IS NULL"
+    )
+    result = database.execute_select_query("SELECT changes()")
+    count = result[0][0] if result else 0
+    database.close()
+    logger.info(f"Marked {count} tracks as researched")
+    return count

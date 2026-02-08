@@ -1,9 +1,7 @@
 """
 BPM (tempo) analysis for audio files using Essentia.
 
-This module provides local BPM detection for tracks that don't have BPM data
-from AcousticBrainz. It's designed to run as Phase 7.2 in the pipeline,
-after AcousticBrainz lookup (Phase 7.1).
+This module provides local BPM detection for tracks that don't have BPM data.
 
 The primary function `get_bpm_essentia_safe` runs analysis in a subprocess
 to isolate crashes (SEGV) in Essentia's C++ code from killing the main pipeline.

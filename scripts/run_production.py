@@ -92,7 +92,6 @@ def main():
     print(f"MBID extraction: {stats.get('mbid_extraction', {})}")
     print(f"Last.fm artist: {stats.get('lastfm_artist', {})}")
     print(f"Last.fm track: {stats.get('lastfm_track', {})}")
-    print(f"BPM AcousticBrainz: {stats.get('bpm_acousticbrainz', {})}")
     print(f"BPM Essentia: {stats.get('bpm_essentia', {})}")
 
 if __name__ == "__main__":

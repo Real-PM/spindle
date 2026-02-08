@@ -177,6 +177,7 @@ def run_incremental_update(
     skip_ffprobe: bool = False,
     skip_lastfm: bool = False,
     skip_bpm: bool = False,
+    retry_bpm: bool = False,
     rate_limit_delay: float = 0.25,
 ) -> dict:
     """
@@ -192,6 +193,8 @@ def run_incremental_update(
         skip_ffprobe: Skip file-based MBID extraction
         skip_lastfm: Skip Last.fm enrichment
         skip_bpm: Skip BPM enrichment
+        retry_bpm: If True, re-attempt BPM for all tracks with NULL BPM
+            (including previously researched tracks). Default False.
         rate_limit_delay: Seconds between Last.fm API calls
 
     Returns:
@@ -205,8 +208,8 @@ def run_incremental_update(
         "lastfm_artist": {},
         "lastfm_stub": {},
         "lastfm_track": {},
-        "bpm_acousticbrainz": {},
         "bpm_essentia": {},
+        "tracks_researched": 0,
     }
 
     # Determine cutoff date
@@ -292,26 +295,24 @@ def run_incremental_update(
         else:
             stats["lastfm_stub"] = {"total": 0, "processed": 0, "skipped": "no stub artists"}
 
-        # 5. Track enrichment (skip_with_genres=True already filters correctly)
+        # 5. Track enrichment
         logger.info("Running Last.fm track enrichment...")
         stats["lastfm_track"] = dbu.process_lastfm_track_data(
             database,
             rate_limit_delay=rate_limit_delay,
-            skip_with_genres=True,
         )
 
     # BPM enrichment (processes tracks without BPM)
     if not skip_bpm:
-        logger.info("Running AcousticBrainz BPM lookup...")
-        stats["bpm_acousticbrainz"] = dbu.process_bpm_acousticbrainz(database)
-
         logger.info("Running Essentia BPM analysis...")
         stats["bpm_essentia"] = dbu.process_bpm_essentia(
             database,
             use_test_paths=use_test_paths,
             batch_size=25,
             rest_between_batches=10.0,
+            include_researched=retry_bpm,
         )
+        stats["tracks_researched"] = dbu.mark_tracks_researched(database)
 
     # Record in history
     dbf.update_history(database, stats["new_tracks"])
@@ -352,7 +353,6 @@ def run_full_pipeline(
         "mbid_extraction": {},
         "lastfm_artist": {},
         "lastfm_track": {},
-        "bpm_acousticbrainz": {},
         "bpm_essentia": {},
     }
 
@@ -406,21 +406,19 @@ def run_full_pipeline(
         stats["lastfm_track"] = dbu.process_lastfm_track_data(
             database,
             rate_limit_delay=rate_limit_delay,
-            skip_with_genres=True,
         )
 
     # BPM enrichment
     if not skip_bpm:
-        logger.info("Running AcousticBrainz BPM lookup...")
-        stats["bpm_acousticbrainz"] = dbu.process_bpm_acousticbrainz(database)
-
         logger.info("Running Essentia BPM analysis...")
         stats["bpm_essentia"] = dbu.process_bpm_essentia(
             database,
             use_test_paths=use_test_paths,
             batch_size=25,
             rest_between_batches=10.0,
+            include_researched=True,
         )
+        dbu.mark_tracks_researched(database)
 
     # Record in history
     dbf.update_history(database, stats["total_tracks"])

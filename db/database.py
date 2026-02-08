@@ -250,6 +250,7 @@ class Database:
         , plex_id INTEGER
         , musicbrainz_id TEXT
         , acoustid TEXT
+        , researched_at TEXT
         , FOREIGN KEY (artist_id) REFERENCES artists(id) ON DELETE CASCADE)"""
         self.create_table(track_data_ddl)
         ix_loc = """CREATE INDEX IF NOT EXISTS ix_loc ON track_data (location)"""

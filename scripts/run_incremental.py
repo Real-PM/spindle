@@ -52,7 +52,12 @@ def main():
     parser.add_argument(
         "--skip-bpm",
         action="store_true",
-        help="Skip BPM enrichment (AcousticBrainz + Essentia)",
+        help="Skip BPM enrichment (Essentia local analysis)",
+    )
+    parser.add_argument(
+        "--retry-bpm",
+        action="store_true",
+        help="Re-attempt BPM for all tracks with NULL BPM, including previously researched tracks",
     )
     args = parser.parse_args()
 
@@ -70,6 +75,7 @@ def main():
     dbf.add_acoustid_column(db)
     dbf.add_enrichment_attempted_column(db)
     dbf.add_lastfm_attempted_column(db)
+    dbf.add_researched_at_column(db)
 
     # Validate environment
     logger.info("Validating environment...")
@@ -112,6 +118,7 @@ def main():
         skip_ffprobe=args.skip_ffprobe,
         skip_lastfm=args.skip_lastfm,
         skip_bpm=args.skip_bpm,
+        retry_bpm=args.retry_bpm,
         rate_limit_delay=0.25,
     )
 
@@ -139,10 +146,10 @@ def main():
         print(f"Last.fm artist enrichment: {stats['lastfm_artist']}")
     if stats.get('lastfm_track'):
         print(f"Last.fm track enrichment: {stats['lastfm_track']}")
-    if stats.get('bpm_acousticbrainz'):
-        print(f"BPM AcousticBrainz: {stats['bpm_acousticbrainz']}")
     if stats.get('bpm_essentia'):
         print(f"BPM Essentia: {stats['bpm_essentia']}")
+    if stats.get('tracks_researched'):
+        print(f"Tracks marked researched: {stats['tracks_researched']}")
 
 
 if __name__ == "__main__":
