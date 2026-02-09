@@ -36,7 +36,6 @@ HYPHEN_PREFIXES: set[str] = {
     "jazz",
     "math",
     "neo",
-    "new",
     "noise",
     "nu",
     "post",
