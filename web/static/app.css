@@ -1,0 +1,152 @@
+/* Spindle — Pico CSS overrides */
+
+/* Branding: orange labels */
+label {
+    color: #f59e0b;
+}
+
+/* Footer */
+footer {
+    text-align: center;
+    padding: 2rem 0 1rem;
+    opacity: 0.6;
+}
+
+footer a {
+    color: #f59e0b;
+}
+
+.button-row {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.button-row button {
+    width: auto;
+}
+
+/* htmx loading indicator */
+.htmx-indicator {
+    display: none;
+}
+.htmx-request .htmx-indicator,
+.htmx-request.htmx-indicator {
+    display: inline-block;
+}
+
+/* Result banners */
+.result-success {
+    border-left: 4px solid var(--pico-ins-color, #4caf50);
+}
+
+.result-error {
+    border-left: 4px solid var(--pico-del-color, #f44336);
+}
+
+/* Preview table: constrain height and scroll */
+#preview-table figure {
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+/* Tom Select dark theme adjustments */
+[data-theme="dark"] .ts-wrapper .ts-control {
+    background: var(--pico-form-element-background-color);
+    color: var(--pico-form-element-color);
+    border-color: var(--pico-form-element-border-color);
+}
+
+[data-theme="dark"] .ts-wrapper .ts-dropdown {
+    background: var(--pico-form-element-background-color);
+    color: var(--pico-form-element-color);
+    border-color: var(--pico-form-element-border-color);
+}
+
+[data-theme="dark"] .ts-wrapper .ts-dropdown .active {
+    background: var(--pico-primary-background);
+    color: var(--pico-primary-inverse);
+}
+
+[data-theme="dark"] .ts-wrapper .ts-control .item {
+    background: var(--pico-primary-background);
+    color: var(--pico-primary-inverse);
+    border: none;
+    border-radius: 4px;
+}
+
+[data-theme="dark"] .ts-wrapper .ts-control input {
+    color: var(--pico-form-element-color);
+}
+
+/* Drag handle */
+.drag-handle {
+    cursor: grab;
+    color: var(--pico-muted-color);
+    user-select: none;
+    width: 2rem;
+    text-align: center;
+}
+
+.drag-col, .remove-col {
+    width: 2rem;
+}
+
+/* SortableJS ghost while dragging */
+.sortable-ghost {
+    opacity: 0.4;
+}
+
+/* Remove track button */
+.remove-track-btn {
+    background: none;
+    border: none;
+    color: var(--pico-del-color, #f44336);
+    cursor: pointer;
+    font-size: 1.2rem;
+    padding: 0 0.3rem;
+    line-height: 1;
+}
+
+.remove-track-btn:hover {
+    opacity: 0.7;
+}
+
+/* Add track section */
+#add-track-section {
+    margin-bottom: 1rem;
+}
+
+/* Highlight flash for duplicate add */
+@keyframes highlight-flash {
+    0% { background-color: var(--pico-primary-background); }
+    100% { background-color: transparent; }
+}
+
+.highlight-row {
+    animation: highlight-flash 1s ease-out;
+}
+
+/* Similar tracks section */
+#similar-tracks {
+    margin-top: 1.5rem;
+}
+
+/* Added row in similar tracks table (dimmed + disabled) */
+.added-row {
+    opacity: 0.4;
+    pointer-events: none;
+}
+
+/* Add track button (compact green) */
+.add-track-btn {
+    background: var(--pico-ins-color, #4caf50);
+    color: #fff;
+    border: none;
+    cursor: pointer;
+    font-size: 1.2rem;
+    font-weight: bold;
+    padding: 0 0.5rem;
+    line-height: 1;
+    border-radius: 4px;
+}

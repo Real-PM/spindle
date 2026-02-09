@@ -1,0 +1,9 @@
+{% if success %}
+<article aria-label="Success" class="result-success">
+    {{ message }}
+</article>
+{% else %}
+<article aria-label="Error" class="result-error">
+    {{ message }}
+</article>
+{% endif %}

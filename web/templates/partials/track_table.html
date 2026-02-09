@@ -1,0 +1,33 @@
+{% if tracks %}
+<p><strong id="track-count-display">{{ count }}</strong> track{{ "s" if count != 1 else "" }} shown</p>
+<figure>
+    <table role="grid">
+        <thead>
+            <tr>
+                <th class="drag-col"></th>
+                <th>Title</th>
+                <th>Artist</th>
+                <th>Album</th>
+                <th>BPM</th>
+                <th>Genres</th>
+                <th class="remove-col"></th>
+            </tr>
+        </thead>
+        <tbody id="playlist-body">
+            {% for track in tracks %}
+            <tr data-plex-id="{{ track.plex_id }}">
+                <td class="drag-handle">&#9776;</td>
+                <td>{{ track.title }}</td>
+                <td>{{ track.artist }}</td>
+                <td>{{ track.album }}</td>
+                <td>{{ track.bpm }}</td>
+                <td>{{ track.genres }}</td>
+                <td><button type="button" class="remove-track-btn" onclick="removeTrack(this)">&times;</button></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</figure>
+{% else %}
+<p>No tracks match the current filters.</p>
+{% endif %}

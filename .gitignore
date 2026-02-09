@@ -1,0 +1,29 @@
+# Virtual environments
+.venv/
+venv/
+
+# Environment and secrets
+.env
+config.ini
+
+# Data and logs (keep dirs via .gitkeep)
+data/*
+!data/.gitkeep
+logs/*
+!logs/.gitkeep
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# IDE
+.idea/
+.vscode/
+
+# Tools
+.ruff_cache/
+.claude/
+
+# OS
+.DS_Store

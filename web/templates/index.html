@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>Spindle <small>Playlist Builder</small></h1>
+
+<form id="filter-form">
+    <div class="grid">
+        <!-- LEFT COLUMN: Filters -->
+        <div>
+            <h3>Filters</h3>
+
+            <label for="title">Title</label>
+            <input type="text" id="title" name="title" placeholder="Search by title..."
+                   hx-get="/api/preview-count" hx-trigger="keyup changed delay:400ms"
+                   hx-target="#track-count" hx-include="#filter-form">
+
+            {% if genre_groups %}
+            <label for="genre_groups">Genre Groups</label>
+            <select id="genre_groups" name="genre_groups" multiple placeholder="Select genre groups..."
+                    hx-get="/api/preview-count" hx-trigger="change"
+                    hx-target="#track-count" hx-include="#filter-form">
+                {% for group in genre_groups %}
+                <option value="{{ group.name }}">{{ group.display_name }} ({{ group.member_count }})</option>
+                {% endfor %}
+            </select>
+            {% endif %}
+
+            <label for="genres">Genres</label>
+            <select id="genres" name="genres" multiple placeholder="Select genres..."
+                    hx-get="/api/preview-count" hx-trigger="change"
+                    hx-target="#track-count" hx-include="#filter-form">
+                {% for genre in genres %}
+                <option value="{{ genre }}">{{ genre }}</option>
+                {% endfor %}
+            </select>
+
+            <label for="artists">Artists</label>
+            <select id="artists" name="artists" multiple placeholder="Select artists..."
+                    hx-get="/api/preview-count" hx-trigger="change"
+                    hx-target="#track-count" hx-include="#filter-form">
+                {% for artist in artists %}
+                <option value="{{ artist }}">{{ artist }}</option>
+                {% endfor %}
+            </select>
+
+            <label for="similar_to">Similar to artist</label>
+            <select id="similar_to" name="similar_to" placeholder="Select an artist..."
+                    hx-get="/api/preview-count" hx-trigger="change"
+                    hx-target="#track-count" hx-include="#filter-form">
+                <option value="">None</option>
+                {% for artist in artists %}
+                <option value="{{ artist }}">{{ artist }}</option>
+                {% endfor %}
+            </select>
+
+            <div class="grid">
+                <div>
+                    <label for="min_bpm">Min BPM</label>
+                    <input type="number" id="min_bpm" name="min_bpm" min="0" max="300"
+                           placeholder="e.g. 100"
+                           hx-get="/api/preview-count" hx-trigger="change"
+                           hx-target="#track-count" hx-include="#filter-form">
+                </div>
+                <div>
+                    <label for="max_bpm">Max BPM</label>
+                    <input type="number" id="max_bpm" name="max_bpm" min="0" max="300"
+                           placeholder="e.g. 150"
+                           hx-get="/api/preview-count" hx-trigger="change"
+                           hx-target="#track-count" hx-include="#filter-form">
+                </div>
+            </div>
+
+            <label for="limit">Limit</label>
+            <input type="number" id="limit" name="limit" min="1" max="5000"
+                   placeholder="Max tracks (optional)"
+                   hx-get="/api/preview-count" hx-trigger="change"
+                   hx-target="#track-count" hx-include="#filter-form">
+
+            <hr>
+
+            <label for="playlist_name">Playlist name</label>
+            <input type="text" id="playlist_name" name="playlist_name"
+                   placeholder="My Awesome Playlist" required>
+
+            <label>
+                <input type="checkbox" name="replace_existing">
+                Replace if exists
+            </label>
+        </div>
+
+        <!-- RIGHT COLUMN: Preview -->
+        <div>
+            <h3>Preview</h3>
+
+            <div id="track-count">
+                <p>Set filters and click Preview.</p>
+            </div>
+
+            <div class="button-row">
+                <button type="submit"
+                        hx-post="/api/preview"
+                        hx-target="#preview-table"
+                        hx-indicator="#preview-spinner">
+                    Preview
+                </button>
+                <button type="button" class="secondary"
+                        onclick="submitPlaylist()">
+                    Create Playlist
+                </button>
+                <button type="button" class="contrast"
+                        onclick="findSimilarTracks()">
+                    Find Similar
+                </button>
+            </div>
+
+            <span id="preview-spinner" class="htmx-indicator" aria-busy="true">Loading...</span>
+            <span id="create-spinner" class="htmx-indicator" aria-busy="true">Creating...</span>
+            <span id="similar-spinner" style="display:none;" aria-busy="true">Searching...</span>
+
+            <div id="create-result"></div>
+
+            <div id="add-track-section" style="display:none;">
+                <label for="add-track-select">Add Track</label>
+                <select id="add-track-select" placeholder="Search by title or artist..."></select>
+            </div>
+
+            <input type="hidden" id="track-plex-ids" name="track_plex_ids">
+
+            <div id="preview-table"></div>
+
+            <div id="similar-tracks"></div>
+        </div>
+    </div>
+</form>
+{% endblock %}
