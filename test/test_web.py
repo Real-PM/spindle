@@ -153,3 +153,44 @@ class TestCreatePlaylistWithExplicitIds:
         )
         assert response.status_code == 200
         assert b"empty" in response.data
+
+
+class TestSimilarTracks:
+    def test_without_plex_returns_error(self, client):
+        """Without Plex connected, should return connection error message."""
+        response = client.post(
+            "/api/similar-tracks",
+            data={"track_plex_ids": "[1, 2, 3]"},
+        )
+        assert response.status_code == 200
+        assert b"not connected" in response.data
+
+    def test_empty_plex_ids_returns_error(self, client):
+        """Empty track_plex_ids should return error message."""
+        response = client.post("/api/similar-tracks", data={"track_plex_ids": ""})
+        assert response.status_code == 200
+        assert b"No tracks provided" in response.data
+
+    def test_missing_plex_ids_returns_error(self, client):
+        """Missing track_plex_ids field should return error message."""
+        response = client.post("/api/similar-tracks")
+        assert response.status_code == 200
+        assert b"No tracks provided" in response.data
+
+    def test_invalid_json_returns_error(self, client):
+        """Invalid JSON in track_plex_ids should return error message."""
+        response = client.post(
+            "/api/similar-tracks",
+            data={"track_plex_ids": "not-json"},
+        )
+        assert response.status_code == 200
+        assert b"Invalid track list" in response.data
+
+    def test_empty_list_returns_error(self, client):
+        """Empty JSON list should return error message."""
+        response = client.post(
+            "/api/similar-tracks",
+            data={"track_plex_ids": "[]"},
+        )
+        assert response.status_code == 200
+        assert b"empty" in response.data

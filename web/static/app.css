@@ -110,3 +110,27 @@
 .highlight-row {
     animation: highlight-flash 1s ease-out;
 }
+
+/* Similar tracks section */
+#similar-tracks {
+    margin-top: 1.5rem;
+}
+
+/* Added row in similar tracks table (dimmed + disabled) */
+.added-row {
+    opacity: 0.4;
+    pointer-events: none;
+}
+
+/* Add track button (compact green) */
+.add-track-btn {
+    background: var(--pico-ins-color, #4caf50);
+    color: #fff;
+    border: none;
+    cursor: pointer;
+    font-size: 1.2rem;
+    font-weight: bold;
+    padding: 0 0.5rem;
+    line-height: 1;
+    border-radius: 4px;
+}

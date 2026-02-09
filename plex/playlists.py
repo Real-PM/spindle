@@ -5,6 +5,8 @@ Functions for creating and managing playlists on a Plex server
 based on track selections from the database.
 """
 
+import random
+
 from loguru import logger
 from plexapi.playlist import Playlist
 from plexapi.server import PlexServer
@@ -40,7 +42,9 @@ def create_playlist(
             logger.info(f"Deleting existing playlist: {name}")
             existing.delete()
         else:
-            logger.warning(f"Playlist '{name}' already exists. Use replace_existing=True to overwrite.")
+            logger.warning(
+                f"Playlist '{name}' already exists. Use replace_existing=True to overwrite."
+            )
             return None
 
     # Convert plex_ids to track objects
@@ -132,6 +136,68 @@ def delete_playlist(server: PlexServer, name: str) -> bool:
     else:
         logger.warning(f"Playlist '{name}' not found")
         return False
+
+
+def find_similar_tracks(
+    server: PlexServer,
+    plex_ids: list[int],
+    sample_size: int = 10,
+    max_distance: float = 0.25,
+    limit_per_track: int = 10,
+) -> list[dict]:
+    """Find sonically similar tracks using Plex's neural-network analysis.
+
+    Randomly samples up to `sample_size` tracks from the input list, calls
+    sonicallySimilar() on each, and returns deduplicated results excluding
+    any tracks already in the input list.
+
+    Args:
+        server: Connected PlexServer instance.
+        plex_ids: List of Plex track ratingKeys to find similar tracks for.
+        sample_size: Max number of tracks to sample from plex_ids.
+        max_distance: Sonic distance threshold (lower = more similar).
+        limit_per_track: Max similar tracks to fetch per seed track.
+
+    Returns:
+        List of dicts with keys: plex_id, title, artist, album.
+    """
+    if not plex_ids:
+        return []
+
+    # Sample seed tracks
+    sampled_ids = random.sample(plex_ids, min(sample_size, len(plex_ids)))
+    seed_tracks = fetch_tracks_by_ids(server, sampled_ids)
+
+    if not seed_tracks:
+        return []
+
+    input_set = set(plex_ids)
+    seen: set[int] = set()
+    results: list[dict] = []
+
+    for track in seed_tracks:
+        try:
+            similar = track.sonicallySimilar(limit=limit_per_track, maxDistance=max_distance)
+        except Exception as e:
+            logger.warning("sonicallySimilar failed for '{}': {}", track.title, e)
+            continue
+
+        for sim in similar:
+            rid = int(sim.ratingKey)
+            if rid in input_set or rid in seen:
+                continue
+            seen.add(rid)
+            results.append(
+                {
+                    "plex_id": rid,
+                    "title": sim.title or "",
+                    "artist": sim.grandparentTitle or "",
+                    "album": sim.parentTitle or "",
+                }
+            )
+
+    logger.info("Found {} similar tracks from {} seed tracks", len(results), len(seed_tracks))
+    return results
 
 
 def add_to_playlist(

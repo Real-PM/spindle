@@ -9,7 +9,7 @@ from loguru import logger
 
 from db.database import Database
 from db.queries import build_playlist_query
-from plex.playlists import create_playlist
+from plex.playlists import create_playlist, find_similar_tracks
 from web.services import get_dropdown_data, get_track_details, search_tracks
 
 bp = Blueprint("main", __name__)
@@ -157,6 +157,44 @@ def create_playlist_route():
             success=False,
             message=f"Failed to create playlist '{name}'. It may already exist (enable 'Replace if exists').",
         )
+
+
+@bp.route("/api/similar-tracks", methods=["POST"])
+def similar_tracks():
+    """Find sonically similar tracks via Plex API (htmx fragment)."""
+    raw = request.form.get("track_plex_ids", "").strip()
+    if not raw:
+        return render_template(
+            "partials/similar_tracks.html",
+            tracks=[],
+            error="No tracks provided.",
+        )
+
+    try:
+        plex_ids = json.loads(raw)
+        if not isinstance(plex_ids, list) or not plex_ids:
+            return render_template(
+                "partials/similar_tracks.html",
+                tracks=[],
+                error="Track list is empty.",
+            )
+        plex_ids = [int(pid) for pid in plex_ids]
+    except (json.JSONDecodeError, ValueError, TypeError):
+        return render_template(
+            "partials/similar_tracks.html",
+            tracks=[],
+            error="Invalid track list data.",
+        )
+
+    if current_app.plex_server is None:
+        return render_template(
+            "partials/similar_tracks.html",
+            tracks=[],
+            error="Plex server is not connected. Check server configuration.",
+        )
+
+    tracks = find_similar_tracks(current_app.plex_server, plex_ids)
+    return render_template("partials/similar_tracks.html", tracks=tracks, error=None)
 
 
 @bp.route("/health")

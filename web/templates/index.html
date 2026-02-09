@@ -107,10 +107,15 @@
                         onclick="submitPlaylist()">
                     Create Playlist
                 </button>
+                <button type="button" class="contrast"
+                        onclick="findSimilarTracks()">
+                    Find Similar
+                </button>
             </div>
 
             <span id="preview-spinner" class="htmx-indicator" aria-busy="true">Loading...</span>
             <span id="create-spinner" class="htmx-indicator" aria-busy="true">Creating...</span>
+            <span id="similar-spinner" style="display:none;" aria-busy="true">Searching...</span>
 
             <div id="create-result"></div>
 
@@ -122,6 +127,8 @@
             <input type="hidden" id="track-plex-ids" name="track_plex_ids">
 
             <div id="preview-table"></div>
+
+            <div id="similar-tracks"></div>
         </div>
     </div>
 </form>

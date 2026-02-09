@@ -127,6 +127,51 @@ document.addEventListener("htmx:afterSwap", function (evt) {
     }
 });
 
+// --- Similar tracks ---
+
+function findSimilarTracks() {
+    var tbody = document.getElementById("playlist-body");
+    if (!tbody || tbody.querySelectorAll("tr").length === 0) {
+        alert("No tracks in preview. Use Preview first.");
+        return;
+    }
+
+    var rows = tbody.querySelectorAll("tr[data-plex-id]");
+    var plex_ids = [];
+    rows.forEach(function (row) {
+        plex_ids.push(parseInt(row.getAttribute("data-plex-id"), 10));
+    });
+
+    var spinner = document.getElementById("similar-spinner");
+    if (spinner) spinner.style.display = "inline-block";
+
+    htmx.ajax("POST", "/api/similar-tracks", {
+        target: "#similar-tracks",
+        values: {
+            track_plex_ids: JSON.stringify(plex_ids),
+        },
+    }).then(function () {
+        if (spinner) spinner.style.display = "none";
+    });
+}
+
+function addFromSimilar(btn) {
+    var tr = btn.closest("tr");
+    if (!tr) return;
+
+    var track = {
+        plex_id: tr.getAttribute("data-plex-id"),
+        title: tr.getAttribute("data-title"),
+        artist: tr.getAttribute("data-artist"),
+        album: tr.getAttribute("data-album"),
+        bpm: "",
+        genres: "",
+    };
+
+    addTrackToTable(track);
+    tr.classList.add("added-row");
+}
+
 // Submit playlist with explicit plex_ids from DOM order
 function submitPlaylist() {
     var tbody = document.getElementById("playlist-body");

@@ -1,0 +1,34 @@
+{% if error %}
+<article aria-label="Error" class="result-error">
+    {{ error }}
+</article>
+{% elif tracks %}
+<h4>Similar Tracks ({{ tracks|length }} found)</h4>
+<figure>
+    <table role="grid">
+        <thead>
+            <tr>
+                <th>Title</th>
+                <th>Artist</th>
+                <th>Album</th>
+                <th class="remove-col"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for track in tracks %}
+            <tr data-plex-id="{{ track.plex_id }}"
+                data-title="{{ track.title }}"
+                data-artist="{{ track.artist }}"
+                data-album="{{ track.album }}">
+                <td>{{ track.title }}</td>
+                <td>{{ track.artist }}</td>
+                <td>{{ track.album }}</td>
+                <td><button type="button" class="add-track-btn" onclick="addFromSimilar(this)">+</button></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</figure>
+{% else %}
+<p>No similar tracks found.</p>
+{% endif %}
