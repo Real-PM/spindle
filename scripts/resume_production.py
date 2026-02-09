@@ -11,16 +11,17 @@ from datetime import datetime
 
 sys.path.insert(0, "/mnt/hdd/PycharmProjects/music_organizer_clean")
 
-from config import setup_logging
 from loguru import logger
+
+from config import setup_logging
 
 # Setup logging first
 setup_logging("logs/resume_production.log")
 
-from db import DB_PATH
-from db.database import Database
 import db.db_functions as dbf
 import db.db_update as dbu
+from db import DB_PATH
+from db.database import Database
 
 
 def check_status(db: Database) -> dict:

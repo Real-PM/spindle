@@ -57,6 +57,50 @@ def get_track_details(db: Database, plex_ids: list[int]) -> list[dict]:
     ]
 
 
+def search_tracks(db: Database, query: str, limit: int = 15) -> list[dict]:
+    """
+    Search tracks by title or artist (case-insensitive).
+
+    Args:
+        db: Database instance
+        query: Search string to match against title and artist
+        limit: Maximum results to return
+
+    Returns:
+        List of dicts with keys: plex_id, title, artist, album, bpm, genres
+    """
+    if not query or len(query) < 2:
+        return []
+
+    pattern = f"%{query}%"
+    sql = """
+        SELECT td.plex_id, td.title, td.artist, td.album, td.bpm,
+               GROUP_CONCAT(DISTINCT g.genre) AS genres
+        FROM track_data td
+        LEFT JOIN track_genres tg ON td.id = tg.track_id
+        LEFT JOIN artist_genres ag ON td.artist_id = ag.artist_id AND tg.track_id IS NULL
+        LEFT JOIN genres g ON g.id = COALESCE(tg.genre_id, ag.genre_id)
+        WHERE td.title LIKE ? OR td.artist LIKE ?
+        GROUP BY td.plex_id, td.title, td.artist, td.album, td.bpm
+        LIMIT ?
+    """
+    db.connect()
+    rows = db.execute_select_query(sql, (pattern, pattern, limit))
+    db.close()
+
+    return [
+        {
+            "plex_id": row[0],
+            "title": row[1] or "",
+            "artist": row[2] or "",
+            "album": row[3] or "",
+            "bpm": int(row[4]) if row[4] else "",
+            "genres": (row[5] or "").replace(",", ", "),
+        }
+        for row in rows
+    ]
+
+
 def get_dropdown_data(db: Database) -> dict:
     """
     Fetch data needed to populate filter dropdowns.

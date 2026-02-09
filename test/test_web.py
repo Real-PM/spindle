@@ -78,6 +78,36 @@ class TestPreview:
         assert "<table" in html or "No tracks" in html
 
 
+class TestTrackSearch:
+    def test_empty_query_returns_empty(self, client):
+        """Empty query should return empty JSON array."""
+        response = client.get("/api/track-search?q=")
+        assert response.status_code == 200
+        assert response.get_json() == []
+
+    def test_short_query_returns_empty(self, client):
+        """Query shorter than 2 chars should return empty JSON array."""
+        response = client.get("/api/track-search?q=a")
+        assert response.status_code == 200
+        assert response.get_json() == []
+
+    def test_returns_json(self, client):
+        """Search results should be a JSON array."""
+        response = client.get("/api/track-search?q=test")
+        assert response.status_code == 200
+        data = response.get_json()
+        assert isinstance(data, list)
+
+    def test_result_fields(self, client):
+        """If results are returned, each should have expected fields."""
+        response = client.get("/api/track-search?q=the")
+        data = response.get_json()
+        if data:
+            track = data[0]
+            for field in ("plex_id", "title", "artist", "album", "bpm", "genres"):
+                assert field in track
+
+
 class TestCreatePlaylist:
     def test_create_without_name(self, client):
         """Creating a playlist without a name should return an error."""
@@ -92,4 +122,34 @@ class TestCreatePlaylist:
             data={"playlist_name": "Test Playlist", "min_bpm": "100", "max_bpm": "200"},
         )
         assert response.status_code == 200
+        # Returns either "no tracks" (if filters match nothing) or "not connected"
+        assert b"result-error" in response.data
+
+
+class TestCreatePlaylistWithExplicitIds:
+    def test_explicit_ids_without_plex(self, client):
+        """Explicit plex_ids should be accepted (fails gracefully without Plex)."""
+        response = client.post(
+            "/api/create-playlist",
+            data={"playlist_name": "Test", "track_plex_ids": "[1, 2, 3]"},
+        )
+        assert response.status_code == 200
         assert b"not connected" in response.data
+
+    def test_invalid_json_returns_error(self, client):
+        """Invalid JSON in track_plex_ids should return error."""
+        response = client.post(
+            "/api/create-playlist",
+            data={"playlist_name": "Test", "track_plex_ids": "not-json"},
+        )
+        assert response.status_code == 200
+        assert b"Invalid track list" in response.data
+
+    def test_empty_list_returns_error(self, client):
+        """Empty plex_ids list should return error."""
+        response = client.post(
+            "/api/create-playlist",
+            data={"playlist_name": "Test", "track_plex_ids": "[]"},
+        )
+        assert response.status_code == 200
+        assert b"empty" in response.data

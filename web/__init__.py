@@ -10,7 +10,7 @@ from loguru import logger
 from config import setup_logging
 from db import DB_PATH
 from db.database import Database
-from plex import PLEX_SERVER_URL, PLEX_SERVER_TOKEN
+from plex import PLEX_SERVER_TOKEN, PLEX_SERVER_URL
 
 
 def create_app(db_path: str | None = None, testing: bool = False) -> Flask:

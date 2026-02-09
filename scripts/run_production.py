@@ -10,17 +10,19 @@ from datetime import datetime
 
 sys.path.insert(0, "/mnt/hdd/PycharmProjects/music_organizer_clean")
 
-from config import setup_logging
 from loguru import logger
+
+from config import setup_logging
 
 # Setup logging first
 setup_logging("logs/production_run.log")
 
 from db import DB_PATH
 from db.database import Database
-from plex import PLEX_MUSIC_LIBRARY
-from plex.plex_library import plex_connect, get_music_library, get_all_tracks, listify_track_data
 from pipeline import run_full_pipeline, validate_environment
+from plex import PLEX_MUSIC_LIBRARY
+from plex.plex_library import get_all_tracks, get_music_library, plex_connect
+
 
 def main():
     start_time = datetime.now()

@@ -22,16 +22,17 @@ from time import sleep
 
 sys.path.insert(0, "/mnt/hdd/PycharmProjects/music_organizer_clean")
 
-from config import setup_logging
 from loguru import logger
+
+from config import setup_logging
 
 # Setup logging first
 setup_logging("logs/spotify_fetch.log")
 
+import analysis.spotify as spotify
+import db.db_functions as dbf
 from db import DB_PATH
 from db.database import Database
-import db.db_functions as dbf
-import analysis.spotify as spotify
 
 
 def process_spotify_data(

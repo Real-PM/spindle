@@ -2,13 +2,15 @@
 Route handlers for the playlist builder web UI.
 """
 
-from flask import Blueprint, current_app, render_template, request
+import json
+
+from flask import Blueprint, current_app, jsonify, render_template, request
 from loguru import logger
 
 from db.database import Database
 from db.queries import build_playlist_query
 from plex.playlists import create_playlist
-from web.services import get_dropdown_data, get_track_details
+from web.services import get_dropdown_data, get_track_details, search_tracks
 
 bp = Blueprint("main", __name__)
 
@@ -80,13 +82,55 @@ def preview():
     return render_template("partials/track_table.html", tracks=tracks, count=len(tracks))
 
 
+@bp.route("/api/track-search")
+def track_search():
+    """Search tracks by title/artist for the add-track autocomplete (JSON)."""
+    query = request.args.get("q", "").strip()
+    if len(query) < 2:
+        return jsonify([])
+    db = _get_db()
+    results = search_tracks(db, query)
+    return jsonify(results)
+
+
 @bp.route("/api/create-playlist", methods=["POST"])
 def create_playlist_route():
-    """Create a Plex playlist from current filters (htmx fragment)."""
+    """Create a Plex playlist from explicit track list or current filters (htmx fragment)."""
     name = request.form.get("playlist_name", "").strip()
     if not name:
         return render_template(
             "partials/create_result.html", success=False, message="Playlist name is required."
+        )
+
+    # Check for explicit track list first (from edited preview)
+    track_plex_ids_raw = request.form.get("track_plex_ids", "").strip()
+    if track_plex_ids_raw:
+        try:
+            plex_ids = json.loads(track_plex_ids_raw)
+            if not isinstance(plex_ids, list) or not plex_ids:
+                return render_template(
+                    "partials/create_result.html",
+                    success=False,
+                    message="Track list is empty.",
+                )
+            plex_ids = [int(pid) for pid in plex_ids]
+        except (json.JSONDecodeError, ValueError, TypeError):
+            return render_template(
+                "partials/create_result.html",
+                success=False,
+                message="Invalid track list data.",
+            )
+    else:
+        # Fall back to filter-based query
+        db = _get_db()
+        filters = _parse_filters(request)
+        plex_ids = build_playlist_query(db, **filters)
+
+    if not plex_ids:
+        return render_template(
+            "partials/create_result.html",
+            success=False,
+            message="No tracks match the current filters.",
         )
 
     if current_app.plex_server is None:
@@ -94,17 +138,6 @@ def create_playlist_route():
             "partials/create_result.html",
             success=False,
             message="Plex server is not connected. Check server configuration.",
-        )
-
-    db = _get_db()
-    filters = _parse_filters(request)
-    plex_ids = build_playlist_query(db, **filters)
-
-    if not plex_ids:
-        return render_template(
-            "partials/create_result.html",
-            success=False,
-            message="No tracks match the current filters.",
         )
 
     replace_existing = request.form.get("replace_existing") == "on"

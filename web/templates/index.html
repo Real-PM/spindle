@@ -103,11 +103,8 @@
                         hx-indicator="#preview-spinner">
                     Preview
                 </button>
-                <button type="submit" class="secondary"
-                        hx-post="/api/create-playlist"
-                        hx-target="#create-result"
-                        hx-indicator="#create-spinner"
-                        hx-confirm="Create this playlist on Plex?">
+                <button type="button" class="secondary"
+                        onclick="submitPlaylist()">
                     Create Playlist
                 </button>
             </div>
@@ -116,6 +113,13 @@
             <span id="create-spinner" class="htmx-indicator" aria-busy="true">Creating...</span>
 
             <div id="create-result"></div>
+
+            <div id="add-track-section" style="display:none;">
+                <label for="add-track-select">Add Track</label>
+                <select id="add-track-select" placeholder="Search by title or artist..."></select>
+            </div>
+
+            <input type="hidden" id="track-plex-ids" name="track_plex_ids">
 
             <div id="preview-table"></div>
         </div>

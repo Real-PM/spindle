@@ -62,3 +62,51 @@
 [data-theme="dark"] .ts-wrapper .ts-control input {
     color: var(--pico-form-element-color);
 }
+
+/* Drag handle */
+.drag-handle {
+    cursor: grab;
+    color: var(--pico-muted-color);
+    user-select: none;
+    width: 2rem;
+    text-align: center;
+}
+
+.drag-col, .remove-col {
+    width: 2rem;
+}
+
+/* SortableJS ghost while dragging */
+.sortable-ghost {
+    opacity: 0.4;
+}
+
+/* Remove track button */
+.remove-track-btn {
+    background: none;
+    border: none;
+    color: var(--pico-del-color, #f44336);
+    cursor: pointer;
+    font-size: 1.2rem;
+    padding: 0 0.3rem;
+    line-height: 1;
+}
+
+.remove-track-btn:hover {
+    opacity: 0.7;
+}
+
+/* Add track section */
+#add-track-section {
+    margin-bottom: 1rem;
+}
+
+/* Highlight flash for duplicate add */
+@keyframes highlight-flash {
+    0% { background-color: var(--pico-primary-background); }
+    100% { background-color: transparent; }
+}
+
+.highlight-row {
+    animation: highlight-flash 1s ease-out;
+}

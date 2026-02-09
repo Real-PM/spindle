@@ -36,7 +36,7 @@ def count_json_rows(json_path: str) -> int:
     """Count rows in a JSON file."""
     if not os.path.exists(json_path):
         return -1
-    with open(json_path, "r", encoding="utf-8") as f:
+    with open(json_path, encoding="utf-8") as f:
         data = json.load(f)
     return len(data)
 
@@ -89,7 +89,7 @@ def spot_check_table(
     if not os.path.exists(json_path):
         return True, 0, 0
 
-    with open(json_path, "r", encoding="utf-8") as f:
+    with open(json_path, encoding="utf-8") as f:
         data = json.load(f)
 
     if not data:

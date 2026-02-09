@@ -73,7 +73,7 @@ def import_table(database: Database, table_name: str, json_path: str) -> int:
         print(f"  Skipping {table_name}: no JSON file found")
         return 0
 
-    with open(json_path, "r", encoding="utf-8") as f:
+    with open(json_path, encoding="utf-8") as f:
         data = json.load(f)
 
     if not data:
