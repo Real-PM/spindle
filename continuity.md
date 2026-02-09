@@ -1,4 +1,128 @@
-# Session Continuity - 2026-02-04
+# Session Continuity - 2026-02-09
+
+## Current Session (Session 13)
+
+### Genre Normalization & Grouping System — Complete
+
+Built a full genre normalization and grouping layer on top of the existing 3,166 genres. No existing data or queries were modified.
+
+#### New Files
+| File | Purpose |
+|------|---------|
+| `analysis/genre_normalize.py` | Normalization engine: `normalize_genre()`, `build_normalization_map()`, `find_duplicate_clusters()`, ALIAS_MAP, HYPHEN_PREFIXES |
+| `analysis/genre_groups_data.py` | Curated GENRE_GROUPS list (~55 groups covering rock, electronic, jazz, blues, folk, world, decades, etc.) |
+| `scripts/normalize_genres.py` | Populate `genre_aliases` table from normalization engine. Supports `--dry-run` and `--sandbox` |
+| `scripts/populate_genre_groups.py` | Load genre groups into `genre_groups` and `genre_group_members` tables |
+| `test/test_genre_normalization.py` | 30 unit tests for normalization engine (no DB needed) |
+| `test/test_genre_groups.py` | 12 integration tests for genre group queries (sandbox DB) |
+
+#### Modified Files
+| File | Changes |
+|------|---------|
+| `db/db_functions.py` | Added `add_genre_normalization_tables()` — creates `genre_aliases`, `genre_groups`, `genre_group_members` (idempotent) |
+| `db/queries.py` | Added `get_normalized_genres()`, `get_all_genre_groups()`, `get_tracks_by_genre_group()`, `get_tracks_by_genre_groups()`. Modified `build_playlist_query()` to accept `genre_groups` param (unioned with genres, then ANDed with other filters) |
+| `db/db_update.py` | Added `_ensure_genre_alias()` helper. Integrated into `_process_artist_mbid_and_genres()` and `insert_lastfm_track_data()` so new genres get aliases automatically |
+| `web/routes.py` | `_parse_filters()` now extracts `genre_groups` from request |
+| `web/services.py` | `get_dropdown_data()` now returns `genre_groups` list and uses `get_normalized_genres()` for the genre dropdown |
+| `web/templates/index.html` | Added "Genre Groups" multi-select dropdown above genre dropdown |
+| `web/static/app.js` | Tom Select init on genre_groups dropdown (with conditional element check) |
+
+#### Schema (3 new tables)
+```sql
+genre_aliases (raw_genre_id → canonical_genre_id)  -- every genre maps to its canonical form
+genre_groups (id, name, display_name, description, sort_order)
+genre_group_members (group_id, genre_id)  -- many-to-many
+```
+
+#### Test Results
+- 30 normalization unit tests: all passing
+- 12 genre groups integration tests: all passing
+- 9 web UI tests: all passing
+- Full suite (excl. broken e2e): 125 passed, 14 skipped, 2 pre-existing failures
+
+#### How to Populate (against production)
+```bash
+# 1. Run normalization (creates genre_aliases)
+python scripts/normalize_genres.py --dry-run  # Preview first
+python scripts/normalize_genres.py            # Execute
+
+# 2. Populate genre groups
+python scripts/populate_genre_groups.py --dry-run  # Preview first
+python scripts/populate_genre_groups.py            # Execute
+```
+
+#### Next Steps
+- Run normalization against production DB
+- Review and iterate on genre group definitions after seeing real data
+- Consider adding track counts to genre groups in UI
+
+---
+
+## What Was Accomplished (Session 12)
+
+### Pipeline Status: Complete
+- All pipeline phases finished (full and incremental)
+- All tracks that can have enhanced metadata and BPM now have them
+- Production DB: ~36,765 tracks, 3,166 genres
+
+### Focus: Genre Analysis Planning
+- Planned genre normalization and grouping system
+- Analyzed genre data distribution and duplicates
+
+---
+
+## What Was Accomplished (Session 11)
+
+### Web-Based Playlist Builder UI (Phase 1)
+
+Built a full web interface for creating Plex playlists remotely using Flask + htmx + Tom Select + Pico CSS.
+
+#### New Files
+| File | Purpose |
+|------|---------|
+| `web/__init__.py` | Flask app factory, DB/Plex init (auto-prepends `https://` to Plex URL if missing) |
+| `web/routes.py` | 5 route handlers: `/`, `/api/preview-count`, `/api/preview`, `/api/create-playlist`, `/health` |
+| `web/services.py` | `get_track_details()` with genre inheritance, `get_dropdown_data()` |
+| `web/templates/base.html` | Pico CSS (dark theme) + htmx + Tom Select CDN links |
+| `web/templates/index.html` | Two-column layout: filters (left), preview table (right) |
+| `web/templates/partials/` | 3 htmx fragments: track_count, track_table, create_result |
+| `web/static/app.css` | Pico overrides, Tom Select dark theme styling |
+| `web/static/app.js` | Tom Select init on genre/artist/similar_to dropdowns |
+| `Dockerfile` | python:3.13-slim + gunicorn |
+| `docker-compose.yml` | Volume mount for `data/` (read-only), env_file |
+| `test/test_web.py` | 9 tests using Flask test client + sandbox DB |
+
+#### Modified Files
+| File | Changes |
+|------|---------|
+| `db/queries.py` | Added `get_tracks_by_title()`, `title` param to `build_playlist_query()`, changed artist/similar_to to union instead of intersect, removed `include_similar` param |
+| `requirements.txt` | Added `flask>=3.0`, `gunicorn>=22.0` |
+
+#### Bugs Fixed During Development
+- **GROUP_CONCAT DISTINCT** — SQLite doesn't allow a custom separator with `DISTINCT` in `GROUP_CONCAT`. Fixed by dropping separator in SQL and formatting in Python.
+- **htmx POST form serialization** — Preview/Create buttons used `hx-include="#filter-form"` redundantly (they're inside the form). Changed to `type="submit"` and removed `hx-include` so htmx uses default form serialization.
+- **Plex URL scheme** — `.env` has `plex-unraid.jayco.dev` without `https://`. Added auto-detection in `_init_plex()`.
+
+#### Similar Artists Query Fix
+Changed `build_playlist_query()` behavior:
+- **Before:** `similar_to` included the seed artist's tracks (via `get_tracks_by_artist_and_similar`), flooding results with the seed artist
+- **After:** `similar_to` returns only similar artists' tracks (via `get_tracks_by_similar_artists`), excluding the seed
+- `artists` and `similar_to` results are now **unioned** (not intersected), then intersected with other filters (genre, BPM, title)
+- Removed `include_similar` checkbox from UI
+
+#### How to Run
+```bash
+# Development
+flask --app web run
+
+# Docker
+docker compose up --build
+```
+
+#### Test Results
+All 9 tests passing (health check, page load, dropdowns, count, preview, create validation)
+
+---
 
 ## What Was Accomplished (Session 10)
 
@@ -549,7 +673,7 @@ WHERE genres LIKE '%rock%' AND bpm BETWEEN 120 AND 140
 | `get_last_fm_track_data()` | `analysis/lastfm.py` | MBID-first track lookup |
 | `get_primary_artists_without_similar()` | `db/db_functions.py` | Query: primary artists needing enrichment |
 | `get_stub_artists_without_mbid()` | `db/db_functions.py` | Query: stub artists needing enrichment |
-| `process_bpm_acousticbrainz()` | `db/db_update.py` | Phase 7.1: API BPM lookup |
+| `process_bpm_essentia()` | `db/db_update.py` | Local BPM analysis via Essentia |
 | `process_bpm_essentia()` | `db/db_update.py` | Phase 7.2: Local BPM analysis |
 | `lookup_track_and_features()` | `analysis/spotify.py` | Find track on Spotify, get audio features |
 | `get_audio_features_batch()` | `analysis/spotify.py` | Batch fetch audio features (up to 100) |

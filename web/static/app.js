@@ -5,6 +5,12 @@ document.addEventListener("DOMContentLoaded", function () {
         maxOptions: null,
     };
 
+    // Genre groups dropdown (only if element exists)
+    var genreGroupsEl = document.getElementById("genre_groups");
+    if (genreGroupsEl) {
+        new TomSelect("#genre_groups", config);
+    }
+
     new TomSelect("#genres", config);
     new TomSelect("#artists", config);
     new TomSelect("#similar_to", {maxOptions: null});

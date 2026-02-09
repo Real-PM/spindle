@@ -29,6 +29,7 @@ def _parse_filters(req) -> dict:
         Dict of keyword arguments for build_playlist_query()
     """
     title = req.values.get("title", "").strip() or None
+    genre_groups = req.values.getlist("genre_groups") or None
     genres = req.values.getlist("genres") or None
     artists = req.values.getlist("artists") or None
     similar_to = req.values.get("similar_to", "").strip() or None
@@ -39,6 +40,7 @@ def _parse_filters(req) -> dict:
 
     return {
         "title": title,
+        "genre_groups": genre_groups,
         "genres": genres,
         "artists": artists,
         "similar_to": similar_to,

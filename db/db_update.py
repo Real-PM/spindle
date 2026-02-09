@@ -12,6 +12,7 @@ from analysis.ffmpeg import (
     validate_path_mapping,
     verify_path_accessible,
 )
+from analysis.genre_normalize import normalize_genre
 
 from . import TEST_DB_PATH
 from .database import Database
@@ -183,6 +184,59 @@ def check_tags_and_insert(database: Database, lastfm_json: json, genre_list: lis
     database.close()
 
 
+def _ensure_genre_alias(database: Database, raw_genre_id: int, raw_genre: str) -> None:
+    """Create a genre_aliases entry for a raw genre if the table exists.
+
+    Maps the raw genre to its normalized canonical form. If the canonical
+    genre doesn't exist yet, inserts it into the genres table first.
+
+    Args:
+        database: Database connection (must already be connected)
+        raw_genre_id: The genre ID of the raw genre
+        raw_genre: The raw genre string (for normalization)
+    """
+    # Check if genre_aliases table exists
+    check = database.execute_select_query(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='genre_aliases'"
+    )
+    if not check or check[0][0] == 0:
+        return  # Table doesn't exist yet, skip
+
+    # Check if alias already exists for this raw genre
+    existing = database.execute_select_query(
+        "SELECT id FROM genre_aliases WHERE raw_genre_id = ?", (raw_genre_id,)
+    )
+    if existing:
+        return  # Already mapped
+
+    # Normalize the genre
+    canonical = normalize_genre(raw_genre)
+    if not canonical:
+        return
+
+    # Find or create canonical genre
+    canonical_row = database.execute_select_query(
+        "SELECT id FROM genres WHERE LOWER(genre) = LOWER(?)", (canonical,)
+    )
+    if canonical_row:
+        canonical_id = canonical_row[0][0]
+    else:
+        # Insert the canonical genre
+        database.execute_query("INSERT INTO genres (genre) VALUES (?)", (canonical,))
+        canonical_row = database.execute_select_query(
+            "SELECT id FROM genres WHERE genre = ?", (canonical,)
+        )
+        if not canonical_row:
+            return
+        canonical_id = canonical_row[0][0]
+
+    # Insert alias mapping
+    database.execute_query(
+        "INSERT OR IGNORE INTO genre_aliases (raw_genre_id, canonical_genre_id) VALUES (?, ?)",
+        (raw_genre_id, canonical_id),
+    )
+
+
 def _process_artist_mbid_and_genres(
     database: Database,
     artist_id: int,
@@ -233,6 +287,9 @@ def _process_artist_mbid_and_genres(
             genre_id = database.execute_select_query(
                 "SELECT id FROM genres WHERE LOWER(genre) = LOWER(?)", (genre,)
             )[0][0]
+
+            # Maintain genre_aliases for normalization
+            _ensure_genre_alias(database, genre_id, genre)
 
             # Insert genre relationship if not exists
             database.execute_query(
@@ -611,6 +668,9 @@ def insert_lastfm_track_data(
                 genre_id = database.execute_select_query(
                     "SELECT id FROM genres WHERE LOWER(genre) = LOWER(?)", (genre,)
                 )[0][0]
+
+                # Maintain genre_aliases for normalization
+                _ensure_genre_alias(database, genre_id, genre)
 
                 # Insert genre relationship if not exists
                 database.execute_query(

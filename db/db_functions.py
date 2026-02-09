@@ -495,6 +495,90 @@ def get_tracks_by_artist_name(
     return results
 
 
+def add_genre_normalization_tables(database: Database) -> bool:
+    """Add genre normalization and grouping tables (idempotent).
+
+    Creates three new tables:
+    - genre_aliases: maps every raw genre_id to its canonical genre_id
+    - genre_groups: named groups of genres (e.g. "Rock", "Electronic")
+    - genre_group_members: many-to-many linking groups to genres
+
+    Does NOT modify existing genres, track_genres, or artist_genres tables.
+
+    Args:
+        database: Database connection
+
+    Returns:
+        True if any tables were created, False if all already exist
+    """
+    database.connect()
+
+    tables_to_create = {
+        "genre_aliases": """
+            CREATE TABLE IF NOT EXISTS genre_aliases (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                raw_genre_id INTEGER NOT NULL,
+                canonical_genre_id INTEGER NOT NULL,
+                FOREIGN KEY (raw_genre_id) REFERENCES genres(id) ON DELETE CASCADE,
+                FOREIGN KEY (canonical_genre_id) REFERENCES genres(id) ON DELETE CASCADE,
+                UNIQUE (raw_genre_id)
+            )
+        """,
+        "genre_groups": """
+            CREATE TABLE IF NOT EXISTS genre_groups (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                display_name TEXT NOT NULL,
+                description TEXT,
+                sort_order INTEGER DEFAULT 0
+            )
+        """,
+        "genre_group_members": """
+            CREATE TABLE IF NOT EXISTS genre_group_members (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                group_id INTEGER NOT NULL,
+                genre_id INTEGER NOT NULL,
+                FOREIGN KEY (group_id) REFERENCES genre_groups(id) ON DELETE CASCADE,
+                FOREIGN KEY (genre_id) REFERENCES genres(id) ON DELETE CASCADE,
+                UNIQUE (group_id, genre_id)
+            )
+        """,
+    }
+
+    created_any = False
+    for table_name, ddl in tables_to_create.items():
+        # Check if table exists
+        check_query = (
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?"
+        )
+        result = database.execute_select_query(check_query, (table_name,))
+        if result and result[0][0] > 0:
+            logger.info(f"{table_name} table already exists")
+            continue
+
+        try:
+            database.execute_query(ddl)
+            logger.info(f"Created {table_name} table")
+            created_any = True
+        except Exception as e:
+            logger.error(f"Failed to create {table_name} table: {e}")
+
+    # Create indexes for performance
+    indexes = [
+        "CREATE INDEX IF NOT EXISTS ix_genre_aliases_canonical ON genre_aliases (canonical_genre_id)",
+        "CREATE INDEX IF NOT EXISTS ix_genre_group_members_group ON genre_group_members (group_id)",
+        "CREATE INDEX IF NOT EXISTS ix_genre_group_members_genre ON genre_group_members (genre_id)",
+    ]
+    for idx_sql in indexes:
+        try:
+            database.execute_query(idx_sql)
+        except Exception as e:
+            logger.error(f"Failed to create index: {e}")
+
+    database.close()
+    return created_any
+
+
 def get_artist_names_found(
     database: Database,
     artist_names: list[str],

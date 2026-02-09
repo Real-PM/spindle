@@ -14,6 +14,17 @@
                    hx-get="/api/preview-count" hx-trigger="keyup changed delay:400ms"
                    hx-target="#track-count" hx-include="#filter-form">
 
+            {% if genre_groups %}
+            <label for="genre_groups">Genre Groups</label>
+            <select id="genre_groups" name="genre_groups" multiple placeholder="Select genre groups..."
+                    hx-get="/api/preview-count" hx-trigger="change"
+                    hx-target="#track-count" hx-include="#filter-form">
+                {% for group in genre_groups %}
+                <option value="{{ group.name }}">{{ group.display_name }} ({{ group.member_count }})</option>
+                {% endfor %}
+            </select>
+            {% endif %}
+
             <label for="genres">Genres</label>
             <select id="genres" name="genres" multiple placeholder="Select genres..."
                     hx-get="/api/preview-count" hx-trigger="change"

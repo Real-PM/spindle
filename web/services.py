@@ -6,7 +6,11 @@ but that don't belong in the generic db/queries module.
 """
 
 from db.database import Database
-from db.queries import get_all_artists_with_tracks, get_all_genres
+from db.queries import (
+    get_all_artists_with_tracks,
+    get_all_genre_groups,
+    get_normalized_genres,
+)
 
 
 def get_track_details(db: Database, plex_ids: list[int]) -> list[dict]:
@@ -61,9 +65,11 @@ def get_dropdown_data(db: Database) -> dict:
         db: Database instance
 
     Returns:
-        Dict with keys: genres (list[str]), artists (list[str])
+        Dict with keys: genre_groups (list[dict]), genres (list[str]),
+        artists (list[str])
     """
     return {
-        "genres": get_all_genres(db),
+        "genre_groups": get_all_genre_groups(db),
+        "genres": get_normalized_genres(db),
         "artists": get_all_artists_with_tracks(db),
     }

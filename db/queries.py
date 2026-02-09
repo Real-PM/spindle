@@ -254,6 +254,157 @@ def get_all_genres(db: Database) -> list[str]:
     return [row[0] for row in rows]
 
 
+def get_normalized_genres(db: Database) -> list[str]:
+    """Get canonical (normalized) genre names for the UI dropdown.
+
+    Uses genre_aliases to deduplicate — returns only canonical genres
+    that have at least one track or artist association. Falls back to
+    get_all_genres() if genre_aliases table doesn't exist or is empty.
+
+    Returns:
+        Sorted list of canonical genre names
+    """
+    db.connect()
+
+    # Check if genre_aliases table exists and has data
+    check = db.execute_select_query(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='genre_aliases'"
+    )
+    if not check or check[0][0] == 0:
+        db.close()
+        return get_all_genres(db)
+
+    alias_count = db.execute_select_query("SELECT COUNT(*) FROM genre_aliases")
+    if not alias_count or alias_count[0][0] == 0:
+        db.close()
+        return get_all_genres(db)
+
+    # Get distinct canonical genres that are referenced by tracks or artists
+    query = """
+        SELECT DISTINCT g_canonical.genre
+        FROM genre_aliases ga
+        INNER JOIN genres g_canonical ON ga.canonical_genre_id = g_canonical.id
+        INNER JOIN genres g_raw ON ga.raw_genre_id = g_raw.id
+        WHERE g_raw.id IN (
+            SELECT genre_id FROM track_genres
+            UNION
+            SELECT genre_id FROM artist_genres
+        )
+        ORDER BY g_canonical.genre
+    """
+    rows = db.execute_select_query(query)
+    db.close()
+
+    if not rows:
+        return get_all_genres(db)
+
+    return [row[0] for row in rows]
+
+
+def get_all_genre_groups(db: Database) -> list[dict]:
+    """Get all genre groups with member counts for UI dropdown.
+
+    Returns:
+        List of dicts with keys: name, display_name, description, member_count
+        Sorted by sort_order.
+    """
+    db.connect()
+
+    # Check if table exists
+    check = db.execute_select_query(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='genre_groups'"
+    )
+    if not check or check[0][0] == 0:
+        db.close()
+        return []
+
+    query = """
+        SELECT gg.name, gg.display_name, gg.description,
+               COUNT(DISTINCT ggm.genre_id) as member_count
+        FROM genre_groups gg
+        LEFT JOIN genre_group_members ggm ON gg.id = ggm.group_id
+        GROUP BY gg.id, gg.name, gg.display_name, gg.description
+        ORDER BY gg.sort_order, gg.display_name
+    """
+    rows = db.execute_select_query(query)
+    db.close()
+
+    return [
+        {
+            "name": row[0],
+            "display_name": row[1],
+            "description": row[2] or "",
+            "member_count": row[3],
+        }
+        for row in rows
+    ]
+
+
+def get_tracks_by_genre_group(db: Database, group_name: str) -> list[int]:
+    """Get tracks matching any genre in a genre group.
+
+    Uses genre_group_members to expand the group into individual genres,
+    then matches via track_genres and artist_genres (with fallback).
+
+    Args:
+        db: Database connection
+        group_name: The group's name field (e.g. "rock", "electronic")
+
+    Returns:
+        List of plex_ids for matching tracks
+    """
+    query = """
+        SELECT DISTINCT td.plex_id
+        FROM track_data td
+        LEFT JOIN track_genres tg ON td.id = tg.track_id
+        LEFT JOIN artist_genres ag ON td.artist_id = ag.artist_id
+        INNER JOIN genre_group_members ggm ON (
+            ggm.genre_id = tg.genre_id
+            OR (tg.genre_id IS NULL AND ggm.genre_id = ag.genre_id)
+        )
+        INNER JOIN genre_groups gg ON ggm.group_id = gg.id
+        WHERE gg.name = ?
+        AND td.plex_id IS NOT NULL
+    """
+    db.connect()
+    rows = db.execute_select_query(query, (group_name,))
+    db.close()
+    return [row[0] for row in rows]
+
+
+def get_tracks_by_genre_groups(db: Database, group_names: list[str]) -> list[int]:
+    """Get tracks matching any genre in any of the specified groups (OR logic).
+
+    Args:
+        db: Database connection
+        group_names: List of group name values
+
+    Returns:
+        List of plex_ids for matching tracks
+    """
+    if not group_names:
+        return []
+
+    placeholders = ",".join("?" * len(group_names))
+    query = f"""
+        SELECT DISTINCT td.plex_id
+        FROM track_data td
+        LEFT JOIN track_genres tg ON td.id = tg.track_id
+        LEFT JOIN artist_genres ag ON td.artist_id = ag.artist_id
+        INNER JOIN genre_group_members ggm ON (
+            ggm.genre_id = tg.genre_id
+            OR (tg.genre_id IS NULL AND ggm.genre_id = ag.genre_id)
+        )
+        INNER JOIN genre_groups gg ON ggm.group_id = gg.id
+        WHERE gg.name IN ({placeholders})
+        AND td.plex_id IS NOT NULL
+    """
+    db.connect()
+    rows = db.execute_select_query(query, tuple(group_names))
+    db.close()
+    return [row[0] for row in rows]
+
+
 def get_all_artists_with_tracks(db: Database) -> list[str]:
     """
     Get all artist names that have tracks in the library (for UI dropdowns).
@@ -344,6 +495,7 @@ def build_playlist_query(
     db: Database,
     title: str | None = None,
     genres: list[str] | None = None,
+    genre_groups: list[str] | None = None,
     bpm_range: tuple[int, int] | None = None,
     artists: list[str] | None = None,
     similar_to: str | None = None,
@@ -353,15 +505,17 @@ def build_playlist_query(
     """
     Build a playlist query by composing filters.
 
-    Title, genre, and BPM filters are ANDed (intersection).
+    Title, genre/genre_groups, and BPM filters are ANDed (intersection).
+    Genre groups and specific genres are unioned first, then ANDed with
+    other filters.
     Artists and similar_to are unioned first, then ANDed with other filters.
-    This allows selecting "Artists: Traffic" + "Similar to: Traffic" to get
-    tracks by Traffic and artists similar to Traffic.
 
     Args:
         db: Database connection
         title: Title substring to search for (case-insensitive partial match)
         genres: List of genres to include (OR within, AND with other filters)
+        genre_groups: List of genre group names to expand and include
+            (OR within, unioned with genres, AND with other filters)
         bpm_range: Tuple of (min_bpm, max_bpm)
         artists: List of specific artists to include
         similar_to: Seed artist — returns tracks by similar artists only,
@@ -374,10 +528,10 @@ def build_playlist_query(
         List of plex_ids matching all specified criteria
 
     Example:
-        # Uptempo rock playlist, max 50 tracks
+        # Uptempo rock playlist using genre groups, max 50 tracks
         plex_ids = build_playlist_query(
             db,
-            genres=["rock", "alternative"],
+            genre_groups=["rock", "hard_rock"],
             bpm_range=(120, 150),
             limit=50,
         )
@@ -389,10 +543,15 @@ def build_playlist_query(
         title_ids = set(get_tracks_by_title(db, title))
         result_set = title_ids if result_set is None else result_set & title_ids
 
-    # Apply genre filter
+    # Apply genre + genre_groups filter (unioned, then ANDed with other filters)
+    genre_pool: set[int] | None = None
     if genres:
-        genre_ids = set(get_tracks_by_genres(db, genres))
-        result_set = genre_ids if result_set is None else result_set & genre_ids
+        genre_pool = set(get_tracks_by_genres(db, genres))
+    if genre_groups:
+        group_ids = set(get_tracks_by_genre_groups(db, genre_groups))
+        genre_pool = group_ids if genre_pool is None else genre_pool | group_ids
+    if genre_pool is not None:
+        result_set = genre_pool if result_set is None else result_set & genre_pool
 
     # Apply BPM range filter
     if bpm_range:
