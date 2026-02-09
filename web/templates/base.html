@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{% block title %}Playlist Builder{% endblock %}</title>
+    <title>{% block title %}Spindle — Playlist Builder{% endblock %}</title>
 
     <!-- Pico CSS -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
@@ -18,6 +18,10 @@
     <main class="container">
         {% block content %}{% endblock %}
     </main>
+
+    <footer class="container">
+        <small><strong>Spindle</strong> &mdash; <a href="https://jayco.dev">jayco.dev</a></small>
+    </footer>
 
     <!-- htmx -->
     <script src="https://unpkg.com/htmx.org@2.0.4"></script>

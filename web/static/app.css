@@ -1,4 +1,20 @@
-/* Playlist Builder — Pico CSS overrides */
+/* Spindle — Pico CSS overrides */
+
+/* Branding: orange labels */
+label {
+    color: #f59e0b;
+}
+
+/* Footer */
+footer {
+    text-align: center;
+    padding: 2rem 0 1rem;
+    opacity: 0.6;
+}
+
+footer a {
+    color: #f59e0b;
+}
 
 .button-row {
     display: flex;
