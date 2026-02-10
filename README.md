@@ -140,4 +140,4 @@ spindle/
 
 ## License
 
-Personal project by [jayco.dev](https://jayco.dev).
+Another  project by [Real PM](https://realpm.net).
